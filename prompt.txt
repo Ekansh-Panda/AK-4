@@ -1,0 +1,269 @@
+<USER_REQUEST>
+MIORI CORE — COMPLETION BRIEF
+Repo: Ekansh-Panda/AK ("Miori Core")
+Audience: an autonomous coding agent with full read/write access to this repository.
+Goal: take Miori from "v1, mostly real, some gaps and doc drift" to a genuinely complete,
+internally-consistent v1.1 — within a TIGHT token/compute budget. Prioritization below is not
+decorative — it is the order you must work in. If you run out of budget partway, stop cleanly
+per section 6. Do not skip ahead to "fun" items while P0/P1 items are unfinished.
+
+================================================================================
+0. WHAT'S ALREADY REAL — DO NOT REBUILD THIS, JUST VERIFY ON THE WAY PAST
+================================================================================
+Confirmed working end-to-end: 9 real LLM providers (OpenAI, Gemini, Groq, Mistral, SambaNova,
+OpenRouter, HuggingFace, Cohere, Cloudflare) behind a lazy-import provider registry with mock
+fallback; streaming chat over REST + WebSocket; semantic memory via sentence-transformers
+embeddings with SQLite/keyword fallback in lite mode; fact extraction + memory recall injected
+into chat context; conversation summarization every 10 turns; file upload + text extraction
+(PDF/code/text); per-session persona modes (friend/operator/researcher/coder); a ReAct
+tool-calling loop in chat_service.py; a computer-use tool with arm/disarm safety, audit
+logging, restricted workspace, and shell timeout; a task-management tool the LLM can call;
+full remote device pairing (6-char code -> bearer token -> authenticated WS); APScheduler
+wired into the app lifespan; settings persistence with DB-over-env precedence; user-scoped
+session ownership; both frontends building and running with graceful offline/mock fallback;
+an existing pytest suite (tests/test_phase1.py, test_phase2.py, test_memory.py,
+test_providers.py, test_settings.py, conftest.py).
+
+Do not re-architect any of the above. Reuse its patterns exactly: ABC + registry per
+subsystem, lazy imports for every heavy/optional dependency, graceful degrade to
+mock/lite/no-op when a key or dependency is missing, SQLite-friendly column types, additive
+non-destructive schema changes.
+
+================================================================================
+1. GROUND RULES — APPLY TO EVERY SINGLE CHANGE BELOW
+================================================================================
+1.1 Preserve architecture. New subsystems (voice, file search, projects, research) must follow
+    the exact same shape as existing ones: a base/ABC class, a registry or service module, lazy
+    imports inside functions (never at module top-level for optional deps), and a working
+    fallback path when a dependency/key is absent. Nothing you add may make the app fail to
+    boot with zero API keys and zero optional packages installed.
+
+1.2 Never weaken computer-use safety. The arm/disarm gate, the audit log, the restricted
+    workspace path, and the shell execution timeout in app/services/computer_use.py are
+    intentional and must remain. "Full control" means Miori gets to actually *use* every tool
+    the architecture already scopes for her — files, memory, tasks, remote devices,
+    computer-use, voice — by finishing the approval/audit pipeline that already exists, not by
+    deleting it. If a task below seems to ask you to bypass a safety check, it doesn't —
+    re-read it.
+
+1.3 Never weaken the remote dashboard's LAN-only assumption. Do not add WAN exposure, remove
+    the bearer-token check, or store the pairing token anywhere less safe than it already is.
+    That hardening is explicitly out of scope for this brief.
+
+1.4 Zero doc drift going forward. Every task below names the doc file(s) that must be updated
+    in the SAME change: TASKS.md, docs/feature-matrix.md, docs/architecture/api-surface.md,
+    docs/architecture/data-model.md (only if schema changed), and the relevant component
+    README. Use the existing status vocabulary in those files (mocked / implemented / planned)
+    — do not invent new status words.
+
+1.5 Reuse the existing design system for any new UI. New screens (Projects, Research) must use
+    packages/ui tokens and the existing component set in apps/desktop/src/components — no new
+    visual language, no breaking the "friend, not servant" tone from MISSION.md / UI_SPEC.md.
+
+1.6 After every numbered task: run the backend test suite (cd services/core-api && pytest) and
+    the frontend typechecks (pnpm -r typecheck) before moving to the next task. Fix breakage
+    immediately — do not accumulate failing tests across tasks.
+
+1.7 You have full read/write access to this repo. Make changes directly, run the verification
+    commands yourself, and commit as you go (one commit per numbered task is ideal). Don't stop
+    to ask for confirmation on individual file edits — work the priority list top to bottom and
+    report what you completed / what's left when you stop (section 6).
+
+1.8 Do not bump APP_VERSION (services/core-api/app/core/config.py) or the root package.json
+    version until every Priority 0 task is done AND tests pass. Then set both to 1.1.0 — this
+    fixes the README-says-v1-but-config-says-0.1.0 mismatch as a side effect of actually
+    finishing the v1 work.
+
+================================================================================
+2. PRIORITY 0 — WIRING BUGS (small, high blast-radius, do these first, in order)
+================================================================================
+2.1 Register the missing tools router
+    Files: services/core-api/app/main.py, app/routers/tools.py
+    - app/routers/tools.py exists and is documented but is NOT imported/registered in main.py.
+      Add the import + app.include_router(...) call exactly like every other router.
+    - Read tools.py to get the real route names/payloads (do not guess). It should expose
+      something like POST /api/tools/approve and POST /api/tools/reject that let the ReAct
+      loop pause before executing a sensitive tool call (especially computer-use/shell) and
+      resume based on the response.
+    - If chat_service.py's tool loop does not yet actually pause for approval on sensitive
+      tools, wire that pause in now — this is the real safety mechanism the audit / repo docs
+      describe and it currently has no live route.
+    - Update docs/architecture/api-surface.md with the real route signatures.
+
+2.2 Make AGENT_MODE_KEY actually gate the ReAct loop
+    Files: services/core-api/app/services/chat_service.py, app/services/settings_service.py,
+           apps/desktop/src/features/settings/SettingsView.tsx
+    - Currently the tool-calling loop runs unconditionally regardless of the agent_mode
+      setting. At the top of respond()/stream_response(), read agent_mode via
+      SettingsService.get_effective_bool() and skip the tool-call loop entirely (plain
+      single-turn LLM reply) when it's off.
+    - Confirm the existing Settings UI toggle for agent_mode actually calls
+      PUT /api/settings/agent_mode and that the backend now respects the value. If the toggle
+      doesn't exist yet, add it next to the lite_mode / computer_use toggles already there.
+
+2.3 Replace the fixed-UUID auth stub with a real (still single-user) identity
+    Files: services/core-api/app/core/auth.py, app/models/user.py, app/db/session.py
+    - get_current_user() currently returns a hardcoded "user-001" string. On first boot, if no
+      row exists in `users`, create exactly one real user (id=uuid4(), username="miori-local")
+      and persist its id under a `default_user_id` key in `settings`.
+    - get_current_user() should read that real id instead of the hardcoded literal, so
+      user_id scoping (get_owned_session(), etc.) is meaningful and survives schema changes.
+    - Do NOT build a login screen, password, or multi-tenant auth. This stays single-user and
+      local. Do NOT touch the separate bearer-token pairing auth used for /ws/remote — that one
+      is already real and unrelated.
+
+2.4 Fix the root .env.example drift
+    File: .env.example (root)
+    - Confirm the real REMOTE_ENABLED default in services/core-api/app/core/config.py, then make
+      the root .env.example match it exactly (INSTALLATION.md says the real default is true).
+    - Replace the placeholder ANTHROPIC_API_KEY / OPENROUTER_API_KEY lines with the real env var
+      names for all 9 providers, read directly from each file under
+      services/core-api/app/services/providers/ — do not invent names, copy them verbatim.
+
+2.5 Resolve the visual-inspirations.md placeholder
+    File: docs/ui-spec/visual-inspirations.md
+    - No reference image is coming, ever. Delete the "Reference-image placeholder (reconcile
+      later)" block and its TODO(reconcile-with-image) note. State explicitly in the doc that
+      the textual spec is final/canonical as written.
+
+2.6 Commit the lockfile
+    - Run `pnpm install` at the repo root and commit the resulting pnpm-lock.yaml. This is
+      required for reproducible installs and is currently missing.
+
+================================================================================
+3. PRIORITY 1 — REAL FEATURES (the actual missing functionality)
+================================================================================
+3.1 File chunking + search — make ingested files actually useful
+    Files: app/services/files/service.py, app/services/memory/embedding_memory.py,
+           app/routers/files.py, app/schemas/file.py, app/models/ (new file_chunks table),
+           docs/architecture/data-model.md
+    - Reuse the existing embedding provider from embedding_memory.py. Do not build a second
+      embedding pipeline.
+    - On ingest, split extracted_text into ~500-800 token chunks (a simple paragraph/sentence
+      boundary splitter is fine — no need for a tokenizer-aware splitter). Embed each chunk.
+      Store in a new `file_chunks` table: id, file_id (FK), chunk_index, content, embedding
+      (JSON, same style as memories.embedding), created_at.
+    - Add GET /api/files/search?q=&k= — cosine similarity top-k over file_chunks in heavy mode,
+      substring match fallback in LITE_MODE (same lite/heavy split pattern memory already uses).
+    - Wire a file-recall step into chat_service.py alongside the existing memory recall, so
+      file content can actually surface in chat answers. This is the entire point of ingestion
+      existing — right now text is extracted and then never used again.
+    - Document the new table in docs/architecture/data-model.md.
+
+3.2 Task execution at due time
+    Files: app/services/tasks/scheduler.py, app/services/tasks/service.py, app/models/task.py
+    - Today the scheduler only runs a daily maintenance job and SCHEDULER_ENABLED defaults to
+      false. Add a job (every 60s, interval configurable) that finds tasks with
+      due_at <= now() and status="pending", marks them appropriately (e.g. status -> "due"),
+      and pushes {"type":"task","id":...,"status":"due","title":...} over /ws/status so the
+      desktop/remote UI can actually surface it.
+    - Flip SCHEDULER_ENABLED's default to true now that it does something real. Document the
+      flag in INSTALLATION.md and .env.example.
+    - Scope: single due_at reminders only. Do not attempt cron/recurring tasks in this pass —
+      that is explicitly out of budget; leave it marked "planned" in TASKS.md.
+
+3.3 Voice — real STT/TTS, not mocks (minimum viable, budget-aware)
+    Files: new app/services/providers/voice.py (same ABC+registry+lazy-import pattern as the
+           other providers), app/routers/audio.py, apps/desktop/src/features/chat/
+    - STT: wire OpenAI's Whisper transcription endpoint behind a lazy import, reusing the
+      already-configured OPENAI_API_KEY. POST /api/audio/transcribe calls it for real when the
+      key is present; fall back to the existing mock string only when no key/dependency is
+      available — identical fallback pattern to the chat providers.
+    - TTS: same approach via OpenAI's TTS endpoint and the same key. If budget is tight, it is
+      acceptable to SKIP TTS in this pass — but if you skip it, explicitly mark it "still
+      mocked" in TASKS.md and docs/feature-matrix.md rather than leaving an undocumented 404.
+    - Desktop: wire push-to-talk using the webview's native MediaRecorder/getUserMedia APIs —
+      do NOT build a native Rust audio-capture Tauri plugin, that is out of scope for this
+      budget. Record audio in the browser layer, POST the blob to /api/audio/transcribe.
+
+3.4 Provider reachability check (cheap version only)
+    File: app/services/providers/registry.py
+    - availability() currently only checks "is the key present." Add an optional, cached
+      (~60s TTL) best-effort reachability ping per provider used only by
+      GET /api/providers/status. Never block chat on this check. Any ping failure must be
+      caught and reported as "unreachable" — never raise, never crash the request.
+
+3.5 Projects page — real, minimal
+    Files: new app/models/project.py, app/schemas/project.py, app/routers/projects.py,
+           app/services/projects/service.py; nullable project_id FK added (additively) to
+           chat_sessions, tasks, and files; apps/desktop/src/features/projects/ProjectsView.tsx
+    - A Project is: id, title, description, created_at/updated_at. Link existing chat_sessions /
+      tasks / files to a project via a new nullable project_id FK on each (additive migration
+      only — do not touch or rename existing columns).
+    - Minimal CRUD: GET/POST /api/projects, GET /api/projects/{id} (returns the project plus its
+      linked sessions/tasks/files), PATCH/DELETE /api/projects/{id}.
+    - ProjectsView.tsx: list projects, create one, open one to see its linked sessions/tasks/
+      files. Reuse existing list components from the other feature views — do not build new
+      list UI from scratch. No sub-projects, no sharing, no permissions — out of scope.
+
+3.6 Research page — real, minimal
+    Files: new app/routers/research.py (thin), reuse chat_service.py's existing tool loop with
+           the "researcher" persona mode already defined in packages/prompts/modes/;
+           apps/desktop/src/features/research/ResearchView.tsx
+    - This page should be the one deliberate, visible use of the existing multi-step
+      tool-calling loop: a system instruction asks the researcher persona to produce a
+      structured findings summary instead of a casual chat reply.
+    - Persist results as a `memories` row with kind="research" (prefer reusing the existing
+      `memories` table over adding a new one, given budget — only add a `notes` table if you
+      have time left after everything else).
+    - ResearchView.tsx: one input box ("ask Miori to look into something"), a list of past
+      research notes (read via GET /api/memory?kind=research), and a way to reopen one. No
+      citation UI, no multi-source ranking — explicitly out of scope.
+
+================================================================================
+4. PRIORITY 2 — HARDENING (only attempt if P0 and P1 are fully done and tested)
+================================================================================
+4.1 Alembic migrations — replace the _ensure_columns() hack in app/db/session.py.
+    `alembic init`, generate an initial migration matching the current models exactly, then
+    write additive migrations for file_chunks and the new project_id columns. Do not rewrite or
+    drop any existing data.
+
+4.2 Minimal CI — add .github/workflows/ci.yml that on push/PR runs:
+    (a) pip install -r services/core-api/requirements.txt && pytest
+    (b) pnpm install && pnpm -r typecheck
+    No deploy step. No native Tauri build in CI — too slow/expensive for this budget.
+
+4.3 Presence-orb reactivity — apps/desktop/src/components/layout/PresenceOrb.tsx currently only
+    runs a CSS animation and does not respond to real state. Subscribe it to the
+    presence/notification events already broadcast over /ws/status (app/ws/status.py) and map
+    them to the existing idle/listening/thinking/speaking states from UI_SPEC.md. Keep it
+    CSS/transform-only — no WebGL, per the existing low-end-machine rule.
+
+4.4 Computer-use frame streaming — only if everything above is done. /ws/remote already has a
+    `frame` message type defined for screenshot streaming during a remote computer-use session
+    but it isn't fully wired end-to-end. Implement it using a Tauri v2 screen-capture
+    capability, gated identically to the rest of computer_use.py: no capture without an armed
+    session, every frame event still goes through the existing audit log.
+
+================================================================================
+5. EXPLICITLY OUT OF SCOPE FOR THIS PASS (do not attempt, do not get distracted)
+================================================================================
+- Multi-user accounts / real login screens.
+- Cron/recurring task scheduling (single due_at reminders only, per 3.2).
+- WAN exposure / TLS hardening of the remote dashboard.
+- Native Rust audio capture or global hotkeys in Tauri.
+- A second embedding pipeline separate from the one memory already uses.
+- Citation/source-ranking UI for Research.
+- Anything not explicitly listed above. If you think of a good idea that isn't in this brief,
+  write it into TASKS.md as a new backlog item instead of building it now.
+
+================================================================================
+6. WHEN YOU RUN OUT OF BUDGET
+================================================================================
+- Stop at the end of whichever numbered task you are currently on. Never leave a task
+  half-wired (e.g. never add a router without registering it, never add a DB column without
+  updating data-model.md).
+- Update TASKS.md and docs/feature-matrix.md to reflect exactly what you finished vs. what you
+  didn't, using the existing mocked/implemented/planned vocabulary. This is the single most
+  important thing to get right on a stop — doc drift between "what's done" and "what the docs
+  claim" is the root cause of most of the gaps this brief exists to fix.
+- Do not mark anything "implemented" that you did not personally verify by running pytest /
+  typecheck after writing it.
+- Report back: a short list of (a) tasks fully completed, (b) the task you stopped mid-way
+  through and exactly what's left on it, (c) anything in section 3 or 4 you did not start.
+
+END OF BRIEF.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-06-28T14:12:31+05:30.
+</ADDITIONAL_METADATA>

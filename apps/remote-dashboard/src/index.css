@@ -1,0 +1,140 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Miori Core — remote dashboard theme.
+ *
+ * Design tokens are RGB triples (space separated) so Tailwind's
+ * `rgb(var(--token) / <alpha-value>)` can apply opacity. These mirror the
+ * desktop shell so the phone feels like the same friend, smaller.
+ */
+@layer base {
+  :root {
+    /* Surfaces — near-black, layered. */
+    --mi-canvas: 10 10 15; /* #0a0a0f */
+    --mi-surface: 18 18 26; /* #12121a */
+    --mi-elevated: 26 26 38; /* #1a1a26 */
+    --mi-hairline: 255 255 255; /* used at low alpha for hairlines */
+
+    /* Text. */
+    --mi-ink: 237 237 244;
+    --mi-ink-soft: 178 178 196;
+    --mi-ink-faint: 120 120 138;
+
+    /* The one warm accent — soft violet/rose (canonical: packages/config). */
+    --mi-accent: 183 148 246; /* #b794f6 */
+    --mi-accent-soft: 201 177 255; /* #c9b1ff */
+
+    /* Status hues. */
+    --mi-positive: 86 204 157;
+    --mi-warn: 230 184 92;
+    --mi-danger: 232 110 110;
+
+    color-scheme: dark;
+  }
+
+  /* Optional lighter dusk theme. Kept dark-elegant, not a true light mode —
+     Miori stays calm and low-glare even when "light" is chosen on a phone. */
+  :root.theme-dusk {
+    --mi-canvas: 22 21 30;
+    --mi-surface: 32 30 44;
+    --mi-elevated: 44 42 60;
+    --mi-ink: 244 243 250;
+    --mi-ink-soft: 196 194 212;
+    --mi-ink-faint: 150 148 168;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-ink font-sans antialiased;
+    /* Prevent iOS rubber-band white flash + double-tap zoom feel. */
+    overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Subtle ambient glow behind the whole app, fixed so it doesn't scroll. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(
+        60% 45% at 50% -5%,
+        rgb(var(--mi-accent) / 0.14),
+        transparent 70%
+      ),
+      radial-gradient(
+        50% 40% at 100% 100%,
+        rgb(var(--mi-accent) / 0.08),
+        transparent 70%
+      );
+    pointer-events: none;
+  }
+
+  /* Honor reduced-motion. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* Frosted glass surface — the core building block. */
+  .glass {
+    @apply bg-surface/60 backdrop-blur-glass border border-white/[0.06] shadow-glass;
+  }
+
+  .glass-elevated {
+    @apply bg-elevated/70 backdrop-blur-glass border border-white/[0.08] shadow-glass;
+  }
+
+  /* Large, finger-friendly inputs. */
+  .field {
+    @apply w-full rounded-xl bg-surface/70 border border-white/[0.07] px-4 py-3.5
+      text-base text-ink placeholder:text-ink-faint outline-none transition
+      focus:border-accent/60 focus:ring-2 focus:ring-accent/25;
+  }
+}
+
+@layer utilities {
+  /* Safe-area helpers — used together with viewport-fit=cover. */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pl-safe {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  .pr-safe {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  .mb-safe {
+    margin-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .h-safe-bottom {
+    height: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Hide scrollbars on the chat surface for a cleaner phone feel. */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+}

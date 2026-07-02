@@ -1,0 +1,117 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────────────────
+   Miori Core — design tokens
+   Near-black canvas, soft glass, one warm violet/rose accent.
+   Tokens are raw "R G B" triplets so Tailwind's <alpha-value> works.
+   ───────────────────────────────────────────────────────────── */
+@layer base {
+  :root {
+    /* Surfaces */
+    --mi-canvas: 9 9 12; /* #09090c — near-black */
+    --mi-surface: 18 18 23; /* slightly lifted */
+    --mi-elevated: 26 26 33;
+
+    /* Hairlines + glass borders */
+    --mi-hairline: 255 255 255; /* used at low alpha */
+
+    /* Text */
+    --mi-ink: 237 236 243; /* primary */
+    --mi-ink-soft: 173 172 186; /* secondary */
+    --mi-ink-faint: 116 115 130; /* tertiary / hints */
+
+    /* Accent — soft violet drifting toward rose (canonical: packages/config) */
+    --mi-accent: 183 148 246; /* #b794f6 */
+    --mi-accent-soft: 201 177 255; /* #c9b1ff */
+
+    /* Status hues (used sparingly) */
+    --mi-positive: 126 222 168;
+    --mi-warn: 240 200 120;
+    --mi-danger: 240 138 138;
+
+    /* Glass recipe knobs */
+    --mi-glass-bg: 255 255 255;
+    --mi-glass-bg-alpha: 0.045;
+    --mi-glass-border-alpha: 0.08;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-ink font-sans antialiased;
+    /* gentle radial warmth from the top-left, like a lamp in the room */
+    background-image:
+      radial-gradient(
+        900px 600px at 12% -10%,
+        rgb(var(--mi-accent) / 0.1),
+        transparent 60%
+      ),
+      radial-gradient(
+        700px 500px at 100% 0%,
+        rgb(var(--mi-accent-soft) / 0.06),
+        transparent 55%
+      );
+    background-attachment: fixed;
+    overflow: hidden; /* the shell manages its own scroll regions */
+  }
+
+  /* Tame the scrollbars to fit the dark glass mood. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--mi-hairline) / 0.14) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: rgb(var(--mi-hairline) / 0.12);
+    border-radius: 9999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--mi-hairline) / 0.2);
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(var(--mi-accent) / 0.6);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Reusable glass + surface components
+   ───────────────────────────────────────────────────────────── */
+@layer components {
+  .glass {
+    background-color: rgb(var(--mi-glass-bg) / var(--mi-glass-bg-alpha));
+    border: 1px solid rgb(var(--mi-hairline) / var(--mi-glass-border-alpha));
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    box-shadow:
+      0 1px 0 0 rgb(255 255 255 / 0.04) inset,
+      0 8px 30px -12px rgb(0 0 0 / 0.6);
+  }
+
+  .glass-soft {
+    background-color: rgb(var(--mi-glass-bg) / 0.025);
+    border: 1px solid rgb(var(--mi-hairline) / 0.06);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .hairline {
+    border-color: rgb(var(--mi-hairline) / 0.08);
+  }
+
+  /* Subtle text-only divider label. */
+  .eyebrow {
+    @apply text-[0.68rem] font-medium uppercase tracking-[0.14em] text-ink-faint;
+  }
+}

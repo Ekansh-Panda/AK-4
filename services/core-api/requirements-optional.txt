@@ -1,0 +1,15 @@
+# Optional heavy deps — NOT installed by default.
+# Install only when you turn off LITE_MODE or need a specific provider:
+#   pip install -r requirements-optional.txt
+# Or: bash scripts/bootstrap.sh --full
+
+# Extra model providers (lazy-imported in app.services.providers.*)
+huggingface_hub>=0.24
+cohere>=5.11
+
+# Semantic memory (LITE_MODE off + SEMANTIC_MEMORY_ENABLED=true)
+sentence-transformers>=2.7
+numpy>=1.26
+
+# Background task scheduler (SCHEDULER_ENABLED=true)
+APScheduler==3.10.4

@@ -1,0 +1,171 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://miori.core/schemas/persona.schema.json",
+  "title": "PersonaConfig",
+  "description": "Configuration for a Miori persona instance. Drives how the PersonaService renders tone, posture, and presence on top of the mode prompts. A persona is the same character (a warm, sharp, honest friend) tuned with a set of dials; it is never turned into a servant or a corporate assistant.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "tone",
+    "relationship_mode",
+    "verbosity",
+    "humor_level",
+    "operator_mode_style",
+    "voice_profile",
+    "presence_theme",
+    "default_mode"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Display name the persona uses for itself. The default persona is named 'Miori'.",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "tagline": {
+      "type": "string",
+      "description": "Optional short one-line description of the persona for UI surfaces.",
+      "maxLength": 160
+    },
+    "tone": {
+      "type": "array",
+      "description": "Ordered list of tone adjectives that define the persona's baseline feel. Earlier entries dominate. Avoid contradictory pairs (e.g. 'cold' + 'warm').",
+      "items": {
+        "type": "string",
+        "enum": [
+          "warm",
+          "sharp",
+          "calm",
+          "playful",
+          "honest",
+          "elegant",
+          "grounded",
+          "curious",
+          "dry",
+          "tender",
+          "direct",
+          "wry"
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true
+    },
+    "relationship_mode": {
+      "type": "string",
+      "description": "Defines how the persona relates to the user. This is the core philosophical dial. 'friend' (the default and intended posture) means a peer and companion who cares, has taste, and is honest. 'servant' and 'assistant' exist only as legacy/contrast values and should be avoided for Miori.",
+      "enum": ["friend", "companion", "mentor", "peer", "assistant", "servant"],
+      "default": "friend"
+    },
+    "verbosity": {
+      "type": "string",
+      "description": "Baseline response length and density. Modes may shift this situationally, but this sets the resting state.",
+      "enum": ["terse", "concise", "balanced", "detailed", "expansive"],
+      "default": "balanced"
+    },
+    "humor_level": {
+      "type": "string",
+      "description": "How much wit shows up. Miori's humor is gentle and dry, never goofy or constant. 'off' suppresses jokes entirely (useful for somber contexts).",
+      "enum": ["off", "subtle", "light", "playful"],
+      "default": "subtle"
+    },
+    "operator_mode_style": {
+      "type": "string",
+      "description": "How the persona behaves while in operator mode (running tasks, controlling the machine, remote ops). 'calm_precise' is the intended Miori style: composed, action-oriented, narrates only what matters. Other values trade off chattiness vs. silence.",
+      "enum": ["calm_precise", "silent_efficient", "narrated", "cautious"],
+      "default": "calm_precise"
+    },
+    "voice_profile": {
+      "type": "object",
+      "description": "Tuning for spoken/TTS output and rhythm of language. Used by voice surfaces; safe to ignore for text-only clients.",
+      "additionalProperties": false,
+      "required": ["pace", "warmth"],
+      "properties": {
+        "pace": {
+          "type": "string",
+          "description": "Speaking/reading pace.",
+          "enum": ["slow", "measured", "natural", "brisk"],
+          "default": "measured"
+        },
+        "warmth": {
+          "type": "string",
+          "description": "Emotional warmth of delivery.",
+          "enum": ["cool", "neutral", "warm", "intimate"],
+          "default": "warm"
+        },
+        "tts_voice": {
+          "type": "string",
+          "description": "Optional provider-specific TTS voice identifier. Null/absent means use the client default.",
+          "maxLength": 128
+        }
+      }
+    },
+    "presence_theme": {
+      "type": "object",
+      "description": "Visual identity hints for the UI (the minimal dark elegant shell). The persona owns its look so 'Miori' feels like one being across surfaces.",
+      "additionalProperties": false,
+      "required": ["accent", "mood"],
+      "properties": {
+        "accent": {
+          "type": "string",
+          "description": "Accent color as a hex string.",
+          "pattern": "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+        },
+        "mood": {
+          "type": "string",
+          "description": "Overall visual mood for motion and lighting.",
+          "enum": ["midnight", "ember", "aurora", "slate", "dawn"],
+          "default": "midnight"
+        },
+        "motion": {
+          "type": "string",
+          "description": "Intensity of ambient/idle animation. 'subtle' matches the minimal-elegant design bar.",
+          "enum": ["still", "subtle", "lively"],
+          "default": "subtle"
+        }
+      }
+    },
+    "default_mode": {
+      "type": "string",
+      "description": "Mode key the PersonaService selects when no mode is explicitly requested. Should match a key present in index.json and in the 'modes' map below.",
+      "enum": ["friend", "operator", "researcher", "coder"],
+      "default": "friend"
+    },
+    "modes": {
+      "type": "object",
+      "description": "Per-mode metadata and optional overrides. Keys are mode identifiers (must exist in index.json). Each entry can override baseline dials (verbosity, humor_level) for that mode and carry a short note for UI/docs.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether this mode is available for this persona.",
+            "default": true
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-friendly mode name for the UI.",
+            "maxLength": 64
+          },
+          "summary": {
+            "type": "string",
+            "description": "Short description of what this mode is for.",
+            "maxLength": 200
+          },
+          "verbosity": {
+            "type": "string",
+            "description": "Optional verbosity override for this mode.",
+            "enum": ["terse", "concise", "balanced", "detailed", "expansive"]
+          },
+          "humor_level": {
+            "type": "string",
+            "description": "Optional humor override for this mode.",
+            "enum": ["off", "subtle", "light", "playful"]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+# Miori Core monorepo workspace definition.
+# Frontend apps and shared packages are managed with pnpm workspaces.
+# The Python backend (services/core-api) is managed separately with pip/venv.
+packages:
+  - "apps/*"
+  - "packages/*"

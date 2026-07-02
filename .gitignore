@@ -1,0 +1,49 @@
+# ---- Node / frontend ----
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+.eslintcache
+.turbo/
+
+# ---- pnpm ----
+.pnpm-store/
+
+# ---- Install caches (scripts/bootstrap.*) ----
+.cache/
+
+# ---- Python / backend ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# ---- Databases / data ----
+*.db
+*.sqlite
+*.sqlite3
+services/core-api/data/
+data/uploads/
+
+# ---- Tauri / Rust ----
+target/
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
+
+# ---- Env / secrets ----
+.env
+.env.*
+!.env.example
+
+# ---- Editors / OS ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log

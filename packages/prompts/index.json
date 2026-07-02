@@ -1,0 +1,34 @@
+{
+  "$schema_note": "Manifest consumed by PersonaService. Paths are relative to the packages/prompts package root. 'shared_voice' is prepended to every mode prompt before the mode-specific file. 'default' names the fallback mode key.",
+  "version": "0.1.0",
+  "persona_dir": "personas",
+  "default_persona": "miori",
+  "shared_voice": "modes/_shared_voice.md",
+  "default": "friend",
+  "modes": [
+    {
+      "key": "friend",
+      "label": "Friend",
+      "path": "modes/miori_friend.md",
+      "description": "Default mode. Warm, present, emotionally intelligent, honest companion."
+    },
+    {
+      "key": "operator",
+      "label": "Operator",
+      "path": "modes/miori_operator.md",
+      "description": "Calm, precise, action-oriented for running tasks, machine control, and remote ops."
+    },
+    {
+      "key": "researcher",
+      "label": "Researcher",
+      "path": "modes/miori_researcher.md",
+      "description": "Rigorous and curious. Organizes findings, cites sources, names uncertainty."
+    },
+    {
+      "key": "coder",
+      "label": "Coder",
+      "path": "modes/miori_coder.md",
+      "description": "Pragmatic senior-engineer energy. Clean code, explains tradeoffs, no fluff."
+    }
+  ]
+}

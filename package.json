@@ -1,0 +1,33 @@
+{
+  "name": "miori-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Miori Core — a cross-platform personal AI friend, workstation, and remote desktop companion.",
+  "license": "MIT",
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=18"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:desktop": "pnpm --filter @miori/desktop dev",
+    "dev:remote": "pnpm --filter @miori/remote-dashboard dev",
+    "dev:api": "bash scripts/run-dev.sh api",
+    "build:desktop": "pnpm --filter @miori/desktop build",
+    "build:remote": "pnpm --filter @miori/remote-dashboard build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "analyze:repos": "python scripts/analyze_repos.py"
+  },
+  "keywords": [
+    "miori",
+    "ai",
+    "assistant",
+    "companion",
+    "tauri",
+    "fastapi",
+    "monorepo"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@miori/config",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared build configuration for Miori Core frontends: base tsconfig and a Tailwind preset encoding the Miori design tokens.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./tailwind-preset": "./tailwind.preset.ts",
+    "./tsconfig.base.json": "./tsconfig.base.json"
+  },
+  "files": [
+    "tailwind.preset.ts",
+    "tsconfig.base.json"
+  ]
+}

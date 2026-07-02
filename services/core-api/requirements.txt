@@ -1,0 +1,14 @@
+# Miori Core API — core runtime (Python 3.11–3.14)
+# Installed by default via scripts/bootstrap.* — lightweight, no ML/torch.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic>=2.12,<3
+pydantic-settings>=2.7,<3
+SQLAlchemy>=2.0.41,<3
+python-multipart==0.0.20
+websockets==14.1
+
+# Real providers (OpenAI-compatible, Gemini) + PDF file ingestion.
+# Imported LAZILY so the app still boots in lite mode when absent.
+httpx==0.28.1
+pypdf==5.1.0
