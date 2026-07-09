@@ -1,10 +1,10 @@
 /**
  * Shared local types for the Miori Core desktop shell.
- * These mirror the eventual FastAPI contracts but stay frontend-owned for v0.1.
+ * These mirror the eventual FastAPI contracts but stay frontend-owned for v1.1.0.
  */
 
 /** Miori's live presence — drives the orb + status badge. */
-export type PresenceState = "idle" | "listening" | "thinking" | "speaking";
+export type PresenceState = "idle" | "listening" | "thinking" | "speaking" | "error";
 
 /** Backend / device reachability. */
 export type ConnectionStatus = "connected" | "connecting" | "offline";
@@ -241,6 +241,7 @@ export interface ApiProviderStatus {
   configured: boolean;
   available: boolean;
   active: boolean;
+  reachable?: boolean | null;
 }
 
 /** services/core-api: SettingOut. */
@@ -273,7 +274,33 @@ export interface ApiRemoteSession {
   created_at: string;
 }
 
-/** GET /health (server root, not under /api). */
+/** services/core-api: ProjectOut (projects router). */
+export interface ApiProject {
+  id: string;
+  created_at: string | null;
+  updated_at: string | null;
+  name: string;
+  description: string | null;
+  status: string;
+  brief: string | null;
+  sessions: { id: string; title: string }[];
+  tasks: { id: string; title: string }[];
+  files: { id: string; filename: string }[];
+}
+
+/** services/core-api: ProjectCreate / ProjectUpdate (projects router). */
+export interface ApiProjectCreate {
+  name: string;
+  description?: string | null;
+  brief?: string | null;
+  status?: string | null;
+  session_ids?: string[];
+  task_ids?: string[];
+  file_ids?: string[];
+}
+
+/** services/core-api: ProjectUpdate (PATCH — all fields optional). */
+export type ApiProjectUpdate = Partial<ApiProjectCreate>;
 export interface ApiHealth {
   status: string;
   app: string;

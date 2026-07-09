@@ -13,6 +13,9 @@ import type {
   ApiPersona,
   ApiProviderInfo,
   ApiProviderStatus,
+  ApiProject,
+  ApiProjectCreate,
+  ApiProjectUpdate,
   ApiRemoteSession,
   ApiResult,
   ApiSetting,
@@ -257,6 +260,18 @@ export const api = {
       method: "DELETE",
     }),
 
+  /* --- Audio ------------------------------------------------------------ */
+
+  /** POST /audio/transcribe — multipart upload, returns {text}. */
+  transcribeAudio: (file: Blob) => {
+    const form = new FormData();
+    form.append("file", file, "audio.webm");
+    return requestResult<{ text: string }>("/audio/transcribe", { text: "" }, {
+      method: "POST",
+      body: form,
+    });
+  },
+
   /* --- Tasks ------------------------------------------------------------ */
 
   /** GET /tasks */
@@ -354,16 +369,16 @@ export const api = {
   /** GET /projects */
   listProjects: (status?: string) => {
     const qs = status ? `?status=${encodeURIComponent(status)}` : "";
-    return requestResult<any[]>(`/projects${qs}`, []);
+    return requestResult<ApiProject[]>(`/projects${qs}`, []);
   },
 
   /** POST /projects */
-  createProject: (body: { name: string; description?: string; brief?: string }) =>
-    requestResult<any>("/projects", null, { method: "POST", ...json(body) }),
+  createProject: (body: ApiProjectCreate) =>
+    requestResult<ApiProject | null>("/projects", null, { method: "POST", ...json(body) }),
 
   /** PATCH /projects/{id} */
-  updateProject: (id: string, body: { name?: string; description?: string; status?: string; brief?: string }) =>
-    requestResult<any>(`/projects/${encodeURIComponent(id)}`, null, {
+  updateProject: (id: string, body: ApiProjectUpdate) =>
+    requestResult<ApiProject | null>(`/projects/${encodeURIComponent(id)}`, null, {
       method: "PATCH",
       ...json(body),
     }),

@@ -9,7 +9,6 @@ import asyncio
 
 from sqlalchemy import select
 
-from app.core.auth import DEV_USER_ID
 from app.models.message import Message
 from app.services.chat_service import ChatService
 from app.services.persona.service import PersonaService
@@ -70,10 +69,28 @@ def test_user_cannot_access_other_users_session(db):
     assert svc.get_owned_session(session.id, "userB") is None
 
 
-def test_get_current_user_stub():
-    from app.core.auth import get_current_user
+def test_get_current_user_returns_real_user_id():
+    import uuid
 
-    assert get_current_user() == DEV_USER_ID
+    from app.core.auth import get_current_user
+    from app.db.session import SessionLocal, ensure_default_user
+    from app.models.user import User
+
+    with SessionLocal() as db:
+        ensure_default_user(db)
+
+    user_id = get_current_user()
+
+    # The returned id must be a valid UUID...
+    parsed = uuid.UUID(user_id)
+
+    # ...and must correspond to a real user row in the users table.
+    with SessionLocal() as db:
+        user = db.execute(
+            select(User).where(User.id == str(parsed))
+        ).scalar_one_or_none()
+    assert user is not None
+    assert user.username == "miori-local"
 
 
 # --- 1.5: provider registry fallback ---

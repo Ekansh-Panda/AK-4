@@ -1,0 +1,36 @@
+services:
+  backend:
+    build:
+      context: ./services/core-api
+      dockerfile: Dockerfile
+    image: miori-core-api
+    container_name: miori-core-api
+    ports:
+      - "8000:8000"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      LITE_MODE: "true"
+      REMOTE_ENABLED: "true"
+      SCHEDULER_ENABLED: "true"
+      # Persist the SQLite DB inside the mounted volume.
+      DATABASE_URL: "sqlite:////app/data/miori.db"
+    volumes:
+      - miori-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  miori-data:
+
+  # To add the remote dashboard later (when it's containerized), e.g.:
+  #
+  #   frontend:
+  #     build:
+  #       context: ./apps/dashboard
+  #       dockerfile: Dockerfile
+  #     ports:
+  #       - "5174:5174"
+  #     environment:
+  #       VITE_API_URL: "http://localhost:8000"
+  #     depends_on:
+  #       - backend

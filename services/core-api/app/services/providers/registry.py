@@ -7,6 +7,7 @@ whenever the selected provider has no API key configured, so chat always works.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
@@ -46,6 +47,8 @@ class ProviderRegistry:
         self._default: str | None = None
         # In-memory active selection; hydrated from settings via load_active().
         self._active: str | None = None
+        self._ping_cache: dict[str, tuple[float, bool]] = {}
+        self._ping_cache_ttl: float = 60.0
 
     def register(self, provider: ModelProvider, *, default: bool = False) -> None:
         self._providers[provider.name] = provider
@@ -134,6 +137,54 @@ class ProviderRegistry:
             name: (result is True)
             for name, result in zip(names, results)
         }
+
+    def _read_ping_cache(self) -> dict[str, bool]:
+        now = time.monotonic()
+        return {
+            name: reachable
+            for name, (ts, reachable) in self._ping_cache.items()
+            if (now - ts) < self._ping_cache_ttl
+        }
+
+    async def ping_with_cache(self, *, force_refresh: bool = False) -> dict[str, bool]:
+        """Best-effort reachability check with in-memory caching.
+
+        Returns cached results when fresh (<60 s old); otherwise refreshes
+        stale entries by live-pinging and stores the outcome. Never raises.
+        """
+        if force_refresh:
+            self._ping_cache.clear()
+
+        now = time.monotonic()
+        configured = {n: p for n, p in self._providers.items() if p.available()}
+        if not configured:
+            return {}
+
+        cached: dict[str, bool] = {}
+        stale: list[str] = []
+        for name, p in configured.items():
+            entry = self._ping_cache.get(name)
+            if entry is not None and (now - entry[0]) < self._ping_cache_ttl:
+                cached[name] = entry[1]
+            else:
+                stale.append(name)
+
+        if stale:
+            try:
+                live = await self.ping_all()
+            except Exception:
+                live = {}
+            for name in stale:
+                if name in live:
+                    reachable = live[name]
+                elif name in self._ping_cache:
+                    reachable = self._ping_cache[name][1]
+                else:
+                    reachable = configured[name].available()
+                self._ping_cache[name] = (now, reachable)
+                cached[name] = reachable
+
+        return cached
 
 
 # Process-wide registry: mock (always available) + real providers (gated on keys).

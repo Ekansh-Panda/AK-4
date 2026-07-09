@@ -12,5 +12,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@miori/config": "workspace:*"
   }
 }

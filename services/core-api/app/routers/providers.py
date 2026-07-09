@@ -55,21 +55,23 @@ def list_models() -> list[ModelInfo]:
 @router.get("/status", response_model=list[ProviderStatus])
 def provider_status() -> list[ProviderStatus]:
     active = registry.active_name
+    ping_cache = registry._read_ping_cache()
     return [
         ProviderStatus(
             name=a.name,
             configured=a.configured,
             available=a.available,
             active=a.name == active,
+            reachable=ping_cache.get(a.name),
         )
         for a in registry.availability()
     ]
 
 
 @router.get("/ping")
-async def ping_providers() -> dict[str, bool]:
-    """Ping all configured providers concurrently. Returns {name: reachable}."""
-    return await registry.ping_all()
+async def ping_providers(refresh: bool = False) -> dict[str, bool]:
+    """Ping all configured providers. Returns cached results when fresh."""
+    return await registry.ping_with_cache(force_refresh=refresh)
 
 
 @router.put("/active", response_model=ActiveProviderOut)

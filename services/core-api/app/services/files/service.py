@@ -8,6 +8,7 @@ note and keep the upload.
 
 from __future__ import annotations
 
+import re
 import uuid
 from pathlib import Path
 
@@ -19,6 +20,9 @@ from app.core.logging import get_logger
 from app.models.file import FileRecord
 
 logger = get_logger(__name__)
+
+# Split a blob of text into paragraphs on one or more blank lines.
+_PARAGRAPH_SPLIT_RE = re.compile(r"\n\s*\n")
 
 # Extensions decoded directly as UTF-8 text (errors='replace').
 TEXT_EXTENSIONS = {
@@ -130,6 +134,93 @@ class FileIngestionService:
         )
         return record
 
+    # --- chunking ---
+    @staticmethod
+    def _chunk_text(text: str) -> list[str]:
+        """Split text into ~500-800 token-ish chunks (paragraph/sentence-aware).
+
+        Strategy:
+          - Split on blank lines into paragraphs.
+          - Accumulate paragraphs until the running estimate approaches the
+            target (~400-600 words, ~520-780 tokens).
+          - If a single paragraph exceeds the limit, break it on sentence
+            boundaries (``.!?``), falling back to a hard word-wrap.
+          - Never yields an empty chunk. Robust to empty/whitespace/odd input.
+        """
+        if not text or not text.strip():
+            return []
+
+        # Rough token estimate: ~1.3 tokens per whitespace-separated word.
+        target_words_min = 400
+        target_words_max = 600
+
+        # Split into paragraphs on blank lines, but keep each paragraph as a
+        # single unit where possible.
+        paragraphs = [p for p in _PARAGRAPH_SPLIT_RE.split(text) if p and p.strip()]
+        if not paragraphs:
+            return []
+
+        chunks: list[str] = []
+        current: list[str] = []
+        current_words = 0
+
+        def flush() -> None:
+            nonlocal current, current_words
+            if current:
+                joined = "\n\n".join(s.strip() for s in current if s.strip())
+                if joined:
+                    chunks.append(joined)
+                current = []
+                current_words = 0
+
+        def sentence_wrap(paragraph: str) -> list[str]:
+            """Break an over-long paragraph on sentence boundaries, then hard-wrap."""
+            words = paragraph.split()
+            if len(words) <= target_words_max:
+                return [paragraph.strip()]
+            pieces: list[str] = []
+            buf: list[str] = []
+            buf_words = 0
+            for w in words:
+                buf.append(w)
+                buf_words += 1
+                # Prefer to end a piece at a sentence terminator.
+                ends_sentence = w.rstrip().endswith((".", "!", "?", "。", "！", "？"))
+                if buf_words >= target_words_max or (
+                    ends_sentence and buf_words >= target_words_min
+                ):
+                    pieces.append(" ".join(buf))
+                    buf = []
+                    buf_words = 0
+            if buf:
+                pieces.append(" ".join(buf))
+            # Hard-wrap any still-too-large piece (e.g. no sentence terminators).
+            out: list[str] = []
+            for piece in pieces:
+                pw = piece.split()
+                if len(pw) <= target_words_max:
+                    out.append(piece)
+                    continue
+                for i in range(0, len(pw), target_words_max):
+                    out.append(" ".join(pw[i : i + target_words_max]))
+            return [p.strip() for p in out if p and p.strip()]
+
+        for para in paragraphs:
+            para_words = len(para.split())
+            if para_words > target_words_max:
+                # Flush what we have, then emit wrapped pieces individually.
+                flush()
+                chunks.extend(sentence_wrap(para))
+                continue
+
+            if current_words + para_words > target_words_max and current:
+                flush()
+            current.append(para)
+            current_words += para_words
+
+        flush()
+        return chunks
+
     async def ingest(self, file_id: str) -> FileRecord:
         record = self._db.get(FileRecord, file_id)
         if not record:
@@ -137,42 +228,54 @@ class FileIngestionService:
 
         from app.core.config import get_effective_bool
         from app.core.config import settings
+        from app.models.file_chunk import FileChunk
 
-        semantic_enabled = get_effective_bool(self._db, "semantic_memory_enabled", settings.SEMANTIC_MEMORY_ENABLED)
-        if not semantic_enabled:
-            raise ValueError("Semantic memory disabled")
+        semantic_enabled = get_effective_bool(
+            self._db, "semantic_memory_enabled", settings.SEMANTIC_MEMORY_ENABLED
+        )
 
-        if record.status == "ingested":
+        # Idempotent: if chunks already exist for this file there is nothing to
+        # do. (A file's status is set to "ingested" at upload time once text is
+        # extracted, which is distinct from having searchable chunks, so we key
+        # idempotency on chunk existence rather than the status flag.)
+        existing = self._db.execute(
+            select(FileChunk).where(FileChunk.file_id == file_id).limit(1)
+        ).scalar_one_or_none()
+        if existing:
+            if record.status != "ingested":
+                record.status = "ingested"
+                self._db.commit()
+                self._db.refresh(record)
             return record
 
         if not record.extracted_text:
             raise ValueError("no text to ingest")
 
         text = record.extracted_text
-        words = text.split()
-        chunk_size = 500
-        chunks = [" ".join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
+        chunks = self._chunk_text(text)
 
-        from app.models.file_chunk import FileChunk
-        
         for idx, chunk in enumerate(chunks):
-            # If semantic memory is on, embed it!
+            # Embeddings are optional (semantic mode only). In lite mode we store
+            # the chunk text and rely on substring search in `search()`.
             embedding = None
             if semantic_enabled:
                 from app.services.memory.embedding_memory import EmbeddingMemoryProvider
-                # Avoid loading the whole provider if we just need the embedding function,
-                # but since it's already there, use it.
+
                 provider = EmbeddingMemoryProvider(self._db)
-                embedding = provider._encode(chunk).tolist() if hasattr(provider, "_encode") else None
+                embedding = (
+                    provider._encode(chunk).tolist()
+                    if hasattr(provider, "_encode")
+                    else None
+                )
 
             row = FileChunk(
                 file_id=file_id,
                 chunk_index=idx,
                 content=chunk,
-                embedding=embedding
+                embedding=embedding,
             )
             self._db.add(row)
-        
+
         record.status = "ingested"
         self._db.add(record)
         self._db.commit()

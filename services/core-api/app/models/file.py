@@ -14,6 +14,9 @@ class FileRecord(UUIDMixin, TimestampMixin, Base):
     user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True, index=True
     )
+    project_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("projects.id"), nullable=True, index=True
+    )
     filename: Mapped[str] = mapped_column(String(255))
     content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)

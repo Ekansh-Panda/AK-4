@@ -7,16 +7,15 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import type { ApiMessage, ChatMessage, PresenceState, Role } from "@/lib/types";
+import type { ApiMessage, ChatMessage, Role } from "@/lib/types";
 import { mockMessages, uid } from "@/lib/mockData";
 import { streamChat } from "@/lib/ws";
 import { api } from "@/lib/api";
 import { usePersona } from "@/state/PersonaStore";
+import { usePresence } from "@/state/PresenceStore";
 
 interface ChatState {
   messages: ChatMessage[];
-  presence: PresenceState;
-  /** Active backend session id (null until created / loaded). */
   sessionId: string | null;
 }
 
@@ -24,7 +23,6 @@ type Action =
   | { type: "add"; message: ChatMessage }
   | { type: "appendChunk"; id: string; chunk: string }
   | { type: "finish"; id: string }
-  | { type: "presence"; presence: PresenceState }
   | { type: "session"; sessionId: string }
   | { type: "hydrate"; messages: ChatMessage[] }
   | { type: "clear" };
@@ -63,8 +61,6 @@ function reducer(state: ChatState, action: Action): ChatState {
           m.id === action.id ? { ...m, streaming: false } : m,
         ),
       };
-    case "presence":
-      return { ...state, presence: action.presence };
     case "session":
       return { ...state, sessionId: action.sessionId };
     case "hydrate":
@@ -76,18 +72,20 @@ function reducer(state: ChatState, action: Action): ChatState {
   }
 }
 
-interface ChatContextValue extends ChatState {
+interface ChatContextValue {
+  messages: ChatMessage[];
   send: (content: string) => void;
   clear: () => void;
+  sessionId: string | null;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const { backendMode } = usePersona();
+  const { setPresence } = usePresence();
   const [state, dispatch] = useReducer(reducer, {
     messages: mockMessages,
-    presence: "idle",
     sessionId: null,
   });
 
@@ -136,24 +134,24 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         streaming: true,
       },
     });
-    dispatch({ type: "presence", presence: "thinking" });
+    setPresence("thinking");
 
     streamChat(
       trimmed,
       {
         onSession: (sid) => dispatch({ type: "session", sessionId: sid }),
         onChunk: (chunk) => {
-          dispatch({ type: "presence", presence: "speaking" });
+          setPresence("speaking");
           dispatch({ type: "appendChunk", id: replyId, chunk });
         },
         onDone: (sid) => {
           if (sid) dispatch({ type: "session", sessionId: sid });
           dispatch({ type: "finish", id: replyId });
-          dispatch({ type: "presence", presence: "idle" });
+          setPresence("idle");
         },
         onError: () => {
           dispatch({ type: "finish", id: replyId });
-          dispatch({ type: "presence", presence: "idle" });
+          setPresence("idle");
         },
       },
       {
@@ -161,7 +159,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         personaMode: personaRef.current ?? undefined,
       },
     );
-  }, []);
+  }, [setPresence]);
 
   const clear = useCallback(() => dispatch({ type: "clear" }), []);
 

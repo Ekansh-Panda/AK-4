@@ -26,6 +26,7 @@ class ProviderStatus(BaseModel):
     configured: bool
     available: bool
     active: bool = False
+    reachable: bool | None = None
 
 
 class SetActiveProvider(BaseModel):

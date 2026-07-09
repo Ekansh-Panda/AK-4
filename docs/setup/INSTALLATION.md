@@ -177,7 +177,7 @@ Copy-Item services/core-api/.env.example services/core-api/.env
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `APP_NAME` | `Miori Core` | Display name. |
-| `APP_VERSION` | `0.1.0` | Reported version. |
+| `APP_VERSION` | `1.1.0` | Reported version. |
 | `DEBUG` | `true` | Verbose logging. |
 | `HOST` | `127.0.0.1` | Bind address for the API. |
 | `PORT` | `8000` | API port. |
@@ -486,7 +486,7 @@ Miori is designed to scale down gracefully. You can turn off heavy subsystems us
 
 - `LITE_MODE=true` (Default: `true`)
   Disables the vector database, heavy embedding models, and remote pairing. It uses raw SQLite substring search instead. Perfect for laptops or Raspberry Pi.
-- `REMOTE_ENABLED=false` (Default: `false`)
+- `REMOTE_ENABLED=true` (Default: `true`)
   Controls whether the dashboard and pairing routes are exposed to the LAN.
 - `COMPUTER_USE_ENABLED=false` (Default: `false`)
   Controls whether the LLM is allowed to take screenshots and move the mouse.

@@ -2,7 +2,7 @@ import { useLocation } from "react-router-dom";
 import { StatusBadge, connectionTone, presenceLabel } from "@/components/ui/StatusBadge";
 import { useConnection } from "@/state/ConnectionStore";
 import { usePersona } from "@/state/PersonaStore";
-import { useChat } from "@/state/ChatStore";
+import { usePresence } from "@/state/PresenceStore";
 
 const titles: Record<string, string> = {
   "/chat": "Chat",
@@ -19,7 +19,7 @@ export function TopBar() {
   const { pathname } = useLocation();
   const { status } = useConnection();
   const { descriptor } = usePersona();
-  const { presence } = useChat();
+  const { presence } = usePresence();
 
   const conn = connectionTone(status);
   const title = titles[pathname] ?? "Miori";

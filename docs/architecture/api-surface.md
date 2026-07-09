@@ -3,9 +3,11 @@
 > The contract between the frontends (`apps/desktop`, `apps/remote-dashboard`) and the brain
 > (`services/core-api`). Two transports: **REST `/api/*`** and **WebSocket `/ws/*`**.
 >
-> Status tags reflect the current v0.2 reality: core intelligence, providers, file
-> ingestion, memory, tasks, and computer-use are **implemented**. Future items like
-> voice and advanced multi-agent orchestration remain **planned**.
+> Status tags reflect the current v1.1.0 reality: core intelligence, providers, file
+> ingestion, memory, tasks, computer-use, voice, projects, research, a real
+> `/ws/status` fan-out bus, tools/agent approval, and single-user auth are
+> **implemented**. Remote pairing + computer-use frame streaming remain **mocked/planned**
+> (intentionally, per constraints).
 >
 > Related: [System Overview](system-overview.md) · [Data Model](data-model.md) · [Feature Matrix](../feature-matrix.md)
 
@@ -52,12 +54,15 @@ REST handles session CRUD + history; live streaming is on `/ws/chat`.
 | POST | `/api/files/{id}/ingest` | — | `FileRecord` (`status=ingesting`→`ingested`) — **triggers async pipeline** | implemented |
 | GET | `/api/files/{id}` | — | `FileRecord` | implemented |
 | DELETE | `/api/files/{id}` | — | `{ok}` | implemented |
+| GET | `/api/files/search` | `?q=&k=` | ranked `FileChunk` results (semantic when `SEMANTIC_MEMORY_ENABLED`, else substring) | implemented |
 
 ### Providers — `/api/providers` · `routers/providers.py`
 | Method | Path | Request | Response | Status |
 |---|---|---|---|---|
 | GET | `/api/providers` | — | available providers + configured state (lite: `echo`) | implemented |
 | GET | `/api/providers/models` | `?provider=` | model list | implemented |
+| GET | `/api/providers/status` | — | list of `{name, configured, available, active, reachable}` per provider | implemented |
+| GET | `/api/providers/ping` | `?refresh=` | cached reachability map (≈60s TTL) | implemented |
 | POST | `/api/providers/select` | `{provider, model}` | persisted to `settings` | implemented |
 
 > Real OpenAI/Anthropic/Gemini/Groq/Mistral/SambaNova/Cohere/HuggingFace/Cloudflare providers are **implemented**, lazy-imported per provider.
@@ -108,6 +113,35 @@ Gated by `REMOTE_ENABLED`.
 
 > Tools with `requires_approval=True` (e.g. `computer_use`) pause the ReAct loop and broadcast a `tool_approval` event over `/ws/status` before executing. The frontend or dashboard can then `POST /api/tools/approve` or `/reject`.
 
+### Audio — `/api/audio` · `routers/audio.py`
+| Method | Path | Request | Response | Status |
+|---|---|---|---|---|
+| POST | `/api/audio/transcribe` | multipart `file` | `{text}` (Whisper when `OPENAI_API_KEY` present, mock fallback) | implemented |
+| POST | `/api/audio/synthesize` | `{text, voice?}` | `audio/mpeg` bytes (OpenAI TTS when key present, mock fallback) | implemented |
+
+> Desktop Composer has push-to-talk: `MediaRecorder` captures audio → `POST /api/audio/transcribe`. The voice provider is lazy-loaded and degrades to a mock when no key is configured.
+
+### Projects — `/api/projects` · `routers/projects.py`
+| Method | Path | Request | Response | Status |
+|---|---|---|---|---|
+| GET | `/api/projects` | `?status=` | list of `Project` (with linked sessions/tasks/files) | implemented |
+| POST | `/api/projects` | `{name, description?, brief?, session_ids?, task_ids?, file_ids?}` | created `Project` | implemented |
+| GET | `/api/projects/{id}` | — | `Project` (with linked sessions/tasks/files) | implemented |
+| PATCH | `/api/projects/{id}` | `{name?, description?, status?, brief?, session_ids?, task_ids?, file_ids?}` | updated `Project` | implemented |
+| DELETE | `/api/projects/{id}` | — | `{ok}` | implemented |
+
+> `project_id` (string FK → `projects.id`, nullable, additive) is added to `chat_sessions`, `tasks`, and `files`; the `GET/PATCH/DELETE` responses include linked sessions/tasks/files.
+
+### Research — `/api/research` · `routers/research.py`
+| Method | Path | Request | Response | Status |
+|---|---|---|---|---|
+| POST | `/api/research` | `{query}` | `Research` (pending); runs a background research agent | implemented |
+| GET | `/api/research` | — | list of `Research` | implemented |
+| GET | `/api/research/{id}` | — | `Research` | implemented |
+| DELETE | `/api/research/{id}` | — | `{ok}` | implemented |
+
+> The background agent uses the active LLM provider, broadcasts `{type:"research",...}` over `/ws/status`, and ALSO persists a `memories` row with `kind="research"` (listable via `GET /api/memory?kind=research`).
+
 ---
 
 ## WebSocket `/ws`
@@ -121,9 +155,9 @@ All WS messages are JSON envelopes: `{ "type": "...", ... }`.
 - **Status:** implemented (full agent tool-calling loop).
 
 ### `/ws/status` · `ws/status.py` — live status bus
-- **Server → client:** `{type:"heartbeat", ts}` · `{type:"provider", state}` · `{type:"task", id, status}` · `{type:"device", id, state}`
+- **Server → client:** `{type:"heartbeat", ts}` · `{type:"provider", state}` · `{type:"task", id, status}` · `{type:"device", id, state}` · `{type:"research", id, status}` · `{type:"tool_approval", ...}` · `{type:"presence", state}` (idle/listening/thinking/speaking/error)
 - Feeds the desktop status bar / presence-orb state and the dashboard.
-- **Status:** mock (heartbeat + canned events; real event fan-out planned).
+- **Status:** implemented (real event fan-out: task due, research, tool_approval, provider reachability, presence-orb state). Heartbeat is still emitted every 5s.
 
 ### `/ws/remote` · `ws/remote.py` — remote presence & control
 - **Client → server:** `{type:"hello", device}` · `{type:"command", action, args}`
@@ -137,8 +171,8 @@ All WS messages are JSON envelopes: `{ "type": "...", ... }`.
 
 | Bucket | Endpoints |
 |---|---|
-| **Real tonight** | `/api/health`, session/message/memory/task/file/setting **persistence**, `/ws/chat` streaming, `/api/providers`, `/api/persona`, memory `search`, `/api/settings/computer-use/*` |
-| **Mock (wired, canned/echo)** | `/ws/status` heartbeat, `/api/remote/devices` |
-| **Planned (interface/TODO only)** | real remote transport + pairing secrets, voice |
+| **Real** | `/api/health`, session/message/memory/task/file/setting **persistence**, `/ws/chat` streaming, `/api/providers` (+ `/status` + `/ping`), `/api/persona`, memory `search`, `/api/settings/computer-use/*`, `/api/tools` (approve/reject), `/api/files/search`, `/api/audio` (transcribe/synthesize), `/api/projects`, `/api/research`, real single-user `auth`, `/ws/status` event fan-out |
+| **Mock (wired, canned/echo)** | `/api/remote/devices` |
+| **Planned (interface/TODO only)** | real WAN remote transport + pairing secrets, `/ws/remote` computer-use frame streaming |
 
 The authoritative flip-list is [TASKS.md](../../TASKS.md); the capability→repo mapping is the [feature matrix](../feature-matrix.md).

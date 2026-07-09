@@ -19,5 +19,8 @@ class ChatSession(UUIDMixin, TimestampMixin, Base):
         String(36), ForeignKey("users.id"), nullable=True, index=True
     )
     title: Mapped[str] = mapped_column(String(255), default="New chat")
+    project_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("projects.id"), nullable=True, index=True
+    )
     # Persona mode used for this session (friend/operator/researcher/coder).
     persona_mode: Mapped[str] = mapped_column(String(32), default="friend")

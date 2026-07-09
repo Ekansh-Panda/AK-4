@@ -21,6 +21,9 @@ class Task(UUIDMixin, TimestampMixin, Base):
         String(36), ForeignKey("users.id"), nullable=True, index=True
     )
     title: Mapped[str] = mapped_column(String(255))
+    project_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("projects.id"), nullable=True, index=True
+    )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     # "pending" | "in_progress" | "done" | "cancelled"
     status: Mapped[str] = mapped_column(String(32), default="pending", index=True)

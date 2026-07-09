@@ -3,6 +3,7 @@ import { Paperclip, Mic, ArrowUp } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Input";
 import { cn } from "@/lib/cn";
+import { api } from "@/lib/api";
 
 export interface ComposerProps {
   onSend: (value: string) => void;
@@ -68,24 +69,14 @@ export function Composer({ onSend, placeholder = "Talk to Miori…", disabled }:
 
         mediaRecorder.onstop = async () => {
           const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-          const formData = new FormData();
-          formData.append("file", audioBlob, "audio.webm");
 
           try {
-            // Hardcoded URL for now, but ideally uses api client
-            const baseUrl = import.meta.env.VITE_MIORI_API || "http://localhost:8000/api";
-            const res = await fetch(`${baseUrl}/audio/transcribe`, {
-              method: "POST",
-              body: formData,
-            });
-            if (res.ok) {
-              const data = await res.json();
-              if (data.text) {
-                setValue((prev) => (prev ? prev + " " + data.text : data.text));
-                setTimeout(autoGrow, 0);
-              }
+            const r = await api.transcribeAudio(audioBlob);
+            if (r.ok && r.data.text) {
+              setValue((prev) => (prev ? prev + " " + r.data.text : r.data.text));
+              setTimeout(autoGrow, 0);
             } else {
-              console.error("Transcription failed:", res.status, res.statusText);
+              console.error("Transcription failed:", r.status ?? "unknown");
             }
           } catch (e) {
             console.error("Transcription error:", e);

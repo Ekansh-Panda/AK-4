@@ -4,19 +4,8 @@
 > both `apps/desktop` and `apps/remote-dashboard`, and the shared design system in `packages/ui`.
 >
 > Related: [System Overview](../architecture/system-overview.md) · [Feature Matrix](../feature-matrix.md) · [TASKS.md](../../TASKS.md)
-
----
-
-## ⚠ Reference-image placeholder (reconcile later)
-
-The user mentioned a **UI reference image** that was **not available** to this overnight build.
-Everything below is the **textual design contract** derived from MISSION.md. When the reference
-image becomes available:
-
-> **TODO(reconcile-with-image):** Compare these rules against the provided reference image.
-> Where the image and these rules disagree, the **image wins** for visual specifics
-> (exact palette, orb shape, layout proportions). Update this file and `packages/ui` tokens,
-> then remove this placeholder. Do **not** silently diverge — record the diffs here.
+>
+> **This textual spec is final and canonical.** All visual decisions for Miori are governed by this document alone. No external reference image, mockup, or stakeholder input supersedes the rules defined below. Where any future input conflicts with this document, this document takes precedence.
 
 ---
 

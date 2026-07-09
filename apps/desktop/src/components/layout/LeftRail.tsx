@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { PresenceOrb } from "./PresenceOrb";
-import { useChat } from "@/state/ChatStore";
+import { usePresence } from "@/state/PresenceStore";
 
 const nav = [
   { to: "/chat", label: "Chat", Icon: MessageCircle },
@@ -25,7 +25,7 @@ const nav = [
 ];
 
 export function LeftRail() {
-  const { presence } = useChat();
+  const { presence } = usePresence();
 
   return (
     <nav className="flex w-railwide shrink-0 flex-col gap-1 p-3">
@@ -67,7 +67,7 @@ export function LeftRail() {
       ))}
 
       <div className="mt-auto px-3 pb-1 text-[0.65rem] text-ink-faint">
-        Miori Core v0.1
+        Miori Core v1.1.0
       </div>
     </nav>
   );

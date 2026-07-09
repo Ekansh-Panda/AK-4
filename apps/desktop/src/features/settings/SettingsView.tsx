@@ -38,6 +38,7 @@ export function SettingsView() {
   const [statuses, setStatuses] = useState<ApiProviderStatus[]>([]);
   const [theme, setTheme] = useState<"dark" | "midnight">("dark");
   const [lite, setLite] = useState(false);
+  const [agentMode, setAgentMode] = useState(true);
   const [computerArmed, setComputerArmed] = useState(false);
   const [schedulerEnabled, setSchedulerEnabled] = useState(true);
   const [auditLog, setAuditLog] = useState<any[]>([]);
@@ -52,6 +53,9 @@ export function SettingsView() {
     void loadProviders();
     void api.getSetting(LITE_MODE_KEY).then((r) => {
       if (r.ok && r.data) setLite(r.data.value === "true" || r.data.value === "1");
+    });
+    void api.getSetting("agent_mode").then((r) => {
+      if (r.ok && r.data) setAgentMode(r.data.value === "true" || r.data.value === "1");
     });
     void api.getSetting("scheduler_enabled").then((r) => {
       if (r.ok && r.data) setSchedulerEnabled(r.data.value === "true" || r.data.value === "1");
@@ -80,6 +84,12 @@ export function SettingsView() {
     const next = !lite;
     setLite(next);
     await api.putSetting(LITE_MODE_KEY, String(next));
+  };
+
+  const toggleAgentMode = async () => {
+    const next = !agentMode;
+    setAgentMode(next);
+    await api.putSetting("agent_mode", String(next));
   };
 
   const toggleScheduler = async () => {
@@ -127,6 +137,13 @@ export function SettingsView() {
                     <span className="block text-sm capitalize text-ink">{p.name}</span>
                     <span className="block text-xs text-ink-faint">
                       {configured ? "configured" : "not configured"}
+                      {configured &&
+                        (() => {
+                          const reachable = st?.reachable;
+                          if (reachable === false) return " (unreachable)";
+                          if (reachable === true) return " (reachable)";
+                          return null;
+                        })()}
                       {p.models.length > 0 && ` · ${p.models.length} models`}
                       {active ? " · active" : ""}
                     </span>
@@ -247,6 +264,35 @@ export function SettingsView() {
                 className={cn(
                   "absolute top-0.5 h-4 w-4 rounded-full bg-canvas transition-all",
                   lite ? "left-[1.125rem]" : "left-0.5",
+                )}
+              />
+            </span>
+          </button>
+        </SettingRow>
+
+        {/* Agent mode (persisted via PUT /settings) */}
+        <SettingRow
+          title="Agent mode"
+          description="Allow Miori to use tools and run multi-step reasoning. When off, Miori replies with a single-turn response."
+        >
+          <button
+            onClick={() => void toggleAgentMode()}
+            className={cn(
+              "flex w-full items-center justify-between rounded px-4 py-3 text-left transition-colors",
+              agentMode ? "border border-accent/40 bg-accent/10" : "border border-white/[0.06]",
+            )}
+          >
+            <span className="text-sm text-ink">{agentMode ? "Agent mode on" : "Agent mode off"}</span>
+            <span
+              className={cn(
+                "relative h-5 w-9 rounded-full transition-colors",
+                agentMode ? "bg-accent" : "bg-white/15",
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute top-0.5 h-4 w-4 rounded-full bg-canvas transition-all",
+                  agentMode ? "left-[1.125rem]" : "left-0.5",
                 )}
               />
             </span>

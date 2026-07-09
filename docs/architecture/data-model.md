@@ -23,7 +23,12 @@ erDiagram
   USERS ||--o{ FILES : owns
   USERS ||--o{ TASKS : owns
   USERS ||--o{ DEVICES : owns
+  USERS ||--o{ PROJECTS : owns
+  USERS ||--o{ RESEARCH : owns
   CHAT_SESSIONS ||--o{ MESSAGES : contains
+  PROJECTS ||--o{ CHAT_SESSIONS : links
+  PROJECTS ||--o{ TASKS : links
+  PROJECTS ||--o{ FILES : links
 
   USERS {
     string id PK
@@ -37,6 +42,7 @@ erDiagram
   CHAT_SESSIONS {
     string id PK
     string user_id FK
+    string project_id FK
     string title
     string persona_mode
     datetime created_at
@@ -63,6 +69,7 @@ erDiagram
   FILES {
     string id PK
     string user_id FK
+    string project_id FK
     string filename
     string content_type
     int size_bytes
@@ -81,6 +88,7 @@ erDiagram
   TASKS {
     string id PK
     string user_id FK
+    string project_id FK
     string title
     text description
     string status
@@ -96,6 +104,26 @@ erDiagram
     string state
     bool is_paired
     datetime last_seen_at
+    datetime created_at
+    datetime updated_at
+  }
+  PROJECTS {
+    string id PK
+    string user_id FK
+    string name
+    text description
+    string status
+    text brief
+    datetime created_at
+    datetime updated_at
+  }
+  RESEARCH {
+    string id PK
+    string user_id FK
+    string query
+    string status
+    text findings
+    text sources
     datetime created_at
     datetime updated_at
   }
@@ -124,6 +152,7 @@ A single conversation thread. Named `ChatSession` to avoid clashing with SQLAlch
 |---|---|---|
 | `id` | string(36) PK | UUID |
 | `user_id` | string(36) FK → `users.id` | nullable, indexed |
+| `project_id` | string(36) FK → `projects.id` | nullable, indexed (additive) |
 | `title` | string(255) | default `"New chat"` |
 | `persona_mode` | string(32) | `friend` (default) / `operator` / `researcher` / `coder` |
 | timestamps | datetime | mixin |
@@ -161,8 +190,9 @@ Stores metadata for uploaded/ingested files.
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | String(36) | UUID PK |
+| `id` | string(36) PK | UUID |
 | `user_id` | String(36) | Nullable owner |
+| `project_id` | String(36) FK → `projects.id` | Nullable, indexed (additive) |
 | `filename` | String | Original or safe name |
 | `content_type` | String | Nullable MIME type |
 | `size_bytes` | Integer | Raw byte size |
@@ -201,6 +231,7 @@ Task lifecycle for the Tasks page and automation.
 |---|---|---|
 | `id` | string(36) PK | UUID |
 | `user_id` | string(36) FK → `users.id` | nullable, indexed |
+| `project_id` | string(36) FK → `projects.id` | nullable, indexed (additive) |
 | `title` | string(255) | required |
 | `description` | text | nullable |
 | `status` | string(32) | `pending` / `in_progress` / `done` / `cancelled`, indexed |
@@ -225,13 +256,45 @@ Remote / paired devices for the Remote dashboard.
 
 > Auth tokens / pairing secrets for secure remote control are deferred (Mark-XLVI patterns) — see TODO in `models/device.py`.
 
+### `projects` — `models/project.py`
+Long-running workspace / brief that links related sessions, tasks, and files.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | string(36) PK | UUID |
+| `user_id` | string(36) FK → `users.id` | nullable, indexed |
+| `name` | string(255) | required |
+| `description` | text | nullable |
+| `status` | string(32) | `active` (default) / `archived` / `completed`, indexed |
+| `brief` | text | nullable — free-form context notes for the AI |
+| timestamps | datetime | mixin |
+
+> `chat_sessions.project_id`, `tasks.project_id`, `files.project_id` (all nullable, additive) reference this table. The `/api/projects` CRUD returns linked sessions/tasks/files.
+
+### `research` — `models/research.py`
+Stored deep-dive research sessions with cited findings, run by a background agent.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | string(36) PK | UUID |
+| `user_id` | string(36) FK → `users.id` | nullable, indexed |
+| `query` | string(1024) | the research prompt |
+| `status` | string(32) | `pending` / `running` / `done` / `failed`, indexed |
+| `findings` | text | nullable — Markdown findings |
+| `sources` | text | nullable — JSON-encoded source references |
+| timestamps | datetime | mixin |
+
+> The research background agent ALSO persists a `memories` row with `kind="research"` (listable via `GET /api/memory?kind=research`).
+
 ---
 
 ## Relationships summary
 
 - `users (1) ── (N) chat_sessions`
 - `chat_sessions (1) ── (N) messages`
-- `users (1) ── (N) memories | files | tasks | devices`
+- `users (1) ── (N) memories | files | tasks | devices | projects | research`
+- `projects (1) ── (N) chat_sessions | tasks | files`
+- `research` is standalone but writes a `memories` row (`kind="research"`)
 - `settings` is standalone (global key/value).
 
 All `user_id` FKs are **nullable** to support the zero-config single-user default. Cascades and pairing-secret tables are introduced in later versions (see [TASKS.md](../../TASKS.md)).

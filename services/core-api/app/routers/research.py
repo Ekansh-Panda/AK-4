@@ -146,6 +146,24 @@ async def _run_research(research_id: str, query: str) -> None:
         record.status = "done"
         db.commit()
 
+        # Persist a compact research summary into the memory store so it can
+        # be surfaced by chat recall and the memory view (GET /memory?kind=research).
+        try:
+            from app.services.memory.service import MemoryService
+
+            research_summary = f"Research: {query}\n\n{reply[:4000]}"
+            await MemoryService(db).add(
+                content=research_summary,
+                namespace="research",
+                kind="research",
+                user_id=record.user_id,
+            )
+        except Exception as mem_exc:
+            logger.error(
+                "Failed to persist research memory for %s: %s",
+                research_id, mem_exc,
+            )
+
         try:
             from app.ws import manager
 

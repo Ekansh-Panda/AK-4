@@ -8,7 +8,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models.file import FileRecord
 from app.models.project import Project
+from app.models.session import ChatSession
+from app.models.task import Task
 from app.schemas.common import StatusResponse
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -19,6 +22,9 @@ class ProjectCreate(BaseModel):
     name: str
     description: str | None = None
     brief: str | None = None
+    session_ids: list[str] | None = None
+    task_ids: list[str] | None = None
+    file_ids: list[str] | None = None
 
 
 class ProjectUpdate(BaseModel):
@@ -26,6 +32,9 @@ class ProjectUpdate(BaseModel):
     description: str | None = None
     status: str | None = None
     brief: str | None = None
+    session_ids: list[str] | None = None
+    task_ids: list[str] | None = None
+    file_ids: list[str] | None = None
 
 
 class ProjectOut(BaseModel):
@@ -36,11 +45,39 @@ class ProjectOut(BaseModel):
     brief: str | None
     created_at: str | None = None
     updated_at: str | None = None
+    sessions: list[dict] = []
+    tasks: list[dict] = []
+    files: list[dict] = []
 
     model_config = {"from_attributes": True}
 
 
-def _to_out(p: Project) -> ProjectOut:
+def _linked_items(db: Session, project_id: str) -> dict[str, list[dict]]:
+    sessions = [
+        {"id": s.id, "title": s.title}
+        for s in db.execute(
+            select(ChatSession).where(ChatSession.project_id == project_id)
+        )
+        .scalars()
+        .all()
+    ]
+    tasks = [
+        {"id": t.id, "title": t.title}
+        for t in db.execute(select(Task).where(Task.project_id == project_id))
+        .scalars()
+        .all()
+    ]
+    files = [
+        {"id": f.id, "filename": f.filename}
+        for f in db.execute(select(FileRecord).where(FileRecord.project_id == project_id))
+        .scalars()
+        .all()
+    ]
+    return {"sessions": sessions, "tasks": tasks, "files": files}
+
+
+def _to_out(p: Project, db: Session | None = None) -> ProjectOut:
+    linked = _linked_items(db, p.id) if db is not None else {}
     return ProjectOut(
         id=p.id,
         name=p.name,
@@ -49,6 +86,7 @@ def _to_out(p: Project) -> ProjectOut:
         brief=p.brief,
         created_at=str(p.created_at) if p.created_at else None,
         updated_at=str(p.updated_at) if p.updated_at else None,
+        **linked,
     )
 
 
@@ -59,7 +97,35 @@ def create_project(body: ProjectCreate, db: Session = Depends(get_db)) -> Projec
     db.add(project)
     db.commit()
     db.refresh(project)
-    return _to_out(project)
+    _link_items(db, project.id, body.session_ids, body.task_ids, body.file_ids)
+    db.commit()
+    db.refresh(project)
+    return _to_out(project, db)
+
+
+def _link_items(
+    db: Session,
+    project_id: str,
+    session_ids: list[str] | None,
+    task_ids: list[str] | None,
+    file_ids: list[str] | None,
+) -> None:
+    """Link existing sessions/tasks/files to a project by id (optional)."""
+    if session_ids:
+        for s in db.execute(
+            select(ChatSession).where(ChatSession.id.in_(session_ids))
+        ).scalars().all():
+            s.project_id = project_id
+    if task_ids:
+        for t in db.execute(
+            select(Task).where(Task.id.in_(task_ids))
+        ).scalars().all():
+            t.project_id = project_id
+    if file_ids:
+        for f in db.execute(
+            select(FileRecord).where(FileRecord.id.in_(file_ids))
+        ).scalars().all():
+            f.project_id = project_id
 
 
 @router.get("", response_model=list[ProjectOut])
@@ -70,7 +136,7 @@ def list_projects(
     if status:
         stmt = stmt.where(Project.status == status)
     rows = db.execute(stmt).scalars().all()
-    return [_to_out(r) for r in rows]
+    return [_to_out(r, db) for r in rows]
 
 
 @router.get("/{project_id}", response_model=ProjectOut)
@@ -78,7 +144,7 @@ def get_project(project_id: str, db: Session = Depends(get_db)) -> ProjectOut:
     p = db.get(Project, project_id)
     if not p:
         raise HTTPException(status_code=404, detail="project not found")
-    return _to_out(p)
+    return _to_out(p, db)
 
 
 @router.patch("/{project_id}", response_model=ProjectOut)
@@ -89,10 +155,19 @@ def update_project(
     if not p:
         raise HTTPException(status_code=404, detail="project not found")
     for field, value in body.model_dump(exclude_unset=True).items():
+        if field in ("session_ids", "task_ids", "file_ids"):
+            continue
         setattr(p, field, value)
+    _link_items(
+        db,
+        p.id,
+        body.session_ids,
+        body.task_ids,
+        body.file_ids,
+    )
     db.commit()
     db.refresh(p)
-    return _to_out(p)
+    return _to_out(p, db)
 
 
 @router.delete("/{project_id}", response_model=StatusResponse)

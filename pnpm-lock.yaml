@@ -105,9 +105,17 @@ importers:
 
   packages/config: {}
 
-  packages/types: {}
+  packages/types:
+    devDependencies:
+      '@miori/config':
+        specifier: workspace:*
+        version: link:../config
 
-  packages/ui: {}
+  packages/ui:
+    devDependencies:
+      '@miori/config':
+        specifier: workspace:*
+        version: link:../config
 
 packages:
 

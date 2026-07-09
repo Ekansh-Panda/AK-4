@@ -12,6 +12,7 @@ dist-ssr/
 
 # ---- Install caches (scripts/bootstrap.*) ----
 .cache/
+.tmp_bypass/
 
 # ---- Python / backend ----
 __pycache__/
@@ -47,3 +48,4 @@ apps/desktop/src-tauri/gen/
 .DS_Store
 Thumbs.db
 *.log
+.tmp_bypass/

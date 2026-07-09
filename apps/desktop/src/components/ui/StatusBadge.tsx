@@ -47,5 +47,5 @@ export function connectionTone(status: ConnectionStatus): { tone: Tone; label: s
 
 /** Map presence to a label for the status bar. */
 export function presenceLabel(p: PresenceState): string {
-  return { idle: "Idle", listening: "Listening", thinking: "Thinking", speaking: "Speaking" }[p];
+  return { idle: "Idle", listening: "Listening", thinking: "Thinking", speaking: "Speaking", error: "Error" }[p];
 }

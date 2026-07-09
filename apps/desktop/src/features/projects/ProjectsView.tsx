@@ -16,6 +16,71 @@ interface Project {
   brief: string | null;
   created_at: string | null;
   updated_at: string | null;
+  sessions: { id: string; title: string }[];
+  tasks: { id: string; title: string }[];
+  files: { id: string; filename: string }[];
+}
+
+type Tone = "positive" | "accent" | "muted";
+
+function LinkedListItem<T>({
+  label,
+  tone,
+  items,
+  keyOf,
+  labelOf,
+}: {
+  label: string;
+  tone: Tone;
+  items: T[];
+  keyOf: (item: T) => string;
+  labelOf: (item: T) => string;
+}) {
+  return (
+    <div>
+      <p className="mb-1 text-[11px] uppercase tracking-wide text-ink-faint">
+        {label} · {items.length}
+      </p>
+      {items.length === 0 ? (
+        <p className="text-xs text-ink-faint">None</p>
+      ) : (
+        <ul className="space-y-1">
+          {items.map((item) => (
+            <li key={keyOf(item)}>
+              <StatusBadge label={labelOf(item)} tone={tone} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function LinkInput({
+  placeholder,
+  value,
+  onChange,
+  onLink,
+}: {
+  placeholder: string;
+  value: string;
+  onChange: (value: string) => void;
+  onLink: (value: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <Input
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && onLink(value)}
+        className="text-xs"
+      />
+      <Button variant="ghost" size="sm" onClick={() => onLink(value)}>
+        Link
+      </Button>
+    </div>
+  );
 }
 
 export function ProjectsView() {
@@ -26,6 +91,7 @@ export function ProjectsView() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editBrief, setEditBrief] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [linkInputs, setLinkInputs] = useState<Record<string, string>>({});
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -65,6 +131,18 @@ export function ProjectsView() {
   const saveBrief = async (id: string, brief: string) => {
     await api.updateProject(id, { brief });
     setEditBrief(null);
+    refresh();
+  };
+
+  const linkItem = async (
+    id: string,
+    kind: "session_ids" | "task_ids" | "file_ids",
+    value: string,
+  ) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    await api.updateProject(id, { [kind]: [trimmed] });
+    setLinkInputs((prev) => ({ ...prev, [id + kind]: "" }));
     refresh();
   };
 
@@ -203,26 +281,89 @@ export function ProjectsView() {
                         onChange={(e) => setEditBrief(e.target.value)}
                         className="text-xs"
                       />
-                      <div className="mt-2 flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setEditBrief(null);
-                            setExpandedId(null);
-                          }}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => saveBrief(p.id, editBrief ?? p.brief ?? "")}
-                        >
-                          Save Brief
-                        </Button>
-                      </div>
-                    </motion.div>
+                       <div className="mt-2 flex justify-end gap-2">
+                         <Button
+                           variant="ghost"
+                           size="sm"
+                           onClick={() => {
+                             setEditBrief(null);
+                             setExpandedId(null);
+                           }}
+                         >
+                           Cancel
+                         </Button>
+                         <Button
+                           variant="primary"
+                           size="sm"
+                           onClick={() => saveBrief(p.id, editBrief ?? p.brief ?? "")}
+                         >
+                           Save Brief
+                         </Button>
+                       </div>
+                       <div className="mt-4 space-y-3 border-t border-white/5 pt-3">
+                         <p className="text-xs font-medium text-ink-soft">
+                           Linked items
+                         </p>
+                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                           <LinkedListItem
+                             label="Sessions"
+                             tone="accent"
+                             items={p.sessions}
+                             keyOf={(s) => s.id}
+                             labelOf={(s) => s.title}
+                           />
+                           <LinkedListItem
+                             label="Tasks"
+                             tone="positive"
+                             items={p.tasks}
+                             keyOf={(t) => t.id}
+                             labelOf={(t) => t.title}
+                           />
+                           <LinkedListItem
+                             label="Files"
+                             tone="muted"
+                             items={p.files}
+                             keyOf={(f) => f.id}
+                             labelOf={(f) => f.filename}
+                           />
+                         </div>
+                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                           <LinkInput
+                             placeholder="Session id…"
+                             value={linkInputs[p.id + "session_ids"] ?? ""}
+                             onChange={(v) =>
+                               setLinkInputs((prev) => ({
+                                 ...prev,
+                                 [p.id + "session_ids"]: v,
+                               }))
+                             }
+                             onLink={(v) => linkItem(p.id, "session_ids", v)}
+                           />
+                           <LinkInput
+                             placeholder="Task id…"
+                             value={linkInputs[p.id + "task_ids"] ?? ""}
+                             onChange={(v) =>
+                               setLinkInputs((prev) => ({
+                                 ...prev,
+                                 [p.id + "task_ids"]: v,
+                               }))
+                             }
+                             onLink={(v) => linkItem(p.id, "task_ids", v)}
+                           />
+                           <LinkInput
+                             placeholder="File id…"
+                             value={linkInputs[p.id + "file_ids"] ?? ""}
+                             onChange={(v) =>
+                               setLinkInputs((prev) => ({
+                                 ...prev,
+                                 [p.id + "file_ids"]: v,
+                               }))
+                             }
+                             onLink={(v) => linkItem(p.id, "file_ids", v)}
+                           />
+                         </div>
+                       </div>
+                     </motion.div>
                   )}
                 </AnimatePresence>
               </Card>

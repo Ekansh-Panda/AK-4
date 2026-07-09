@@ -60,9 +60,14 @@ forward.**
 - [x] **File ingestion** — text extraction (text/code/PDF) on upload (`services/core-api/app/services/files/`)
   - [x] `POST /api/files` extracts text (413 over `MAX_UPLOAD_BYTES`); `GET /api/files/{id}` returns `extracted_text`
   - [x] Chunk → index pipeline; searchable content feeding memory/research
+  - [x] `GET /api/files/search` (`?q=&k=`) — semantic or substring over `file_chunks`
 - [ ] **Persona depth** — mode-specific tuned prompts + memory-aware tone (`packages/prompts/`)
-- [ ] **Status bus** — real event fan-out (provider health, task, device) over `/ws/status`
-- [ ] **Presence orb** reactive to real chat/voice state
+- [x] **Status bus** — real event fan-out (provider health, task due, research, tool_approval, presence-orb state) over `/ws/status`
+- [x] **Presence orb** reactive to real chat/voice/agent state (driven by `/ws/status` events)
+- [x] **Projects & Research** — real workspaces (`/api/projects` CRUD linking sessions/tasks/files; `/api/research` background agent persisting findings + a `kind="research"` memory row)
+- [x] **Auth (single-user)** — `miori-local` user created on first boot, `default_user_id` in settings; `MIORI_API_TOKEN` still enforced when set
+- [x] **Tools / agent approval** — `requires_approval` tools pause the ReAct loop and broadcast `tool_approval` over `/ws/status`; `POST /api/tools/approve|reject`; `agent_mode` setting gates the loop
+- [x] **Provider reachability** — `GET /api/providers/status` (with `reachable`) + `GET /api/providers/ping` (cached ~60s TTL)
 - [x] **Frontends wired to the backend** — desktop + remote talk to `core-api` over REST + WS (mock fallback when offline)
 - [x] **Setup docs + dev scripts** — `docs/setup/INSTALLATION.md`, `scripts/env-validate.{sh,ps1}`, `scripts/db-init.{sh,ps1}`
 
@@ -71,10 +76,13 @@ forward.**
 ## v0.3 — Advanced automation
 
 - [x] **Computer-use** — sandboxed actions (screenshot/click/type/shell), safety gating, opt-in only (`services/core-api/app/services/tools/`, `ws/remote.py`)
-- [ ] **Voice pipeline** — STT/TTS, push-to-talk, amplitude-reactive orb (`services/providers/` voice, `apps/desktop/src/features/chat/`)
+  - [ ] Computer-use **frame streaming** over `/ws/remote` (P2, still not fully wired)
+- [x] **Voice pipeline** — STT/TTS, push-to-talk, amplitude-reactive orb (`services/providers/` voice, `apps/desktop/src/features/chat/`)
 - [x] **Multi-agent orchestration** — agent loop + sub-agent delegation over the tool registry
 - [x] **Task scheduler** — APScheduler recurring/cron jobs; add `cron`/`next_run` to `models/task.py`
-- [ ] **Projects & Research** pages graduate from placeholders to real workspaces
+- [x] **Projects & Research** pages graduate from placeholders to real workspaces
+- [ ] **Remote (WAN) pairing + relay** — real transport beyond LAN; pairing secrets (`models/device.py`)
+- [ ] **Multi-user** — account provisioning beyond the single `miori-local` identity
 - [ ] **Packaging** — Tauri installers for Windows/Linux/macOS; backend bundling; first-run setup
 - [ ] **3D presence orb** as an opt-in, setting-gated enhancement (still off by default for low-end)
 
@@ -92,7 +100,7 @@ forward.**
 
 ---
 
-## Mocked vs implemented (as of v0.2)
+## Mocked vs implemented (as of v1.1.0)
 
 ### Real / implemented
 - [x] Monorepo + desktop shell + remote dashboard shell, both wired to the backend
@@ -108,16 +116,25 @@ forward.**
 - [x] Memory **pinning + filtering + conversation summaries**
 - [x] Setup docs (`docs/setup/INSTALLATION.md`) + dev scripts (`env-validate`, `db-init`)
 - [x] **Semantic memory** (ChromaDB + SentenceTransformers) + chat recall integration
-- [x] **File indexing** (chunking + ingestion pipeline)
+- [x] **File indexing** (chunking + ingestion pipeline) + `GET /api/files/search`
 - [x] **Task scheduler** (APScheduler + background tasks)
 - [x] **Computer-use tools** (PyAutoGUI + sandbox + audit log)
 - [x] **Agent tool-calling loop** (LLM invokes tools iteratively)
+- [x] **Tools / agent approval** (`tool_approval` pause + broadcast, `POST /api/tools/approve|reject`, `agent_mode` gate)
+- [x] **Voice** (OpenAI Whisper STT + TTS, mock fallback; desktop push-to-talk)
+- [x] **Projects** (`/api/projects` CRUD, linked sessions/tasks/files; `project_id` FK)
+- [x] **Research** (background agent, persisted `research` row + `kind="research"` memory)
+- [x] **WebSocket status bus** (real fan-out: task due, research, tool_approval, provider reachability, presence-orb)
+- [x] **Presence orb** reactive to `/ws/status` state
+- [x] **Auth (single-user)** (`miori-local` user on first boot, `default_user_id` in settings)
+- [x] **Provider reachability** (`/api/providers/status` `reachable` + cached `/api/providers/ping`)
 
-### Still mocked / lite (to be made real in v0.3)
+### Still mocked / lite (intentionally, per constraints)
+- [ ] Remote = **LAN-only / mock device presence**, no real WAN pairing/transport, no pairing secrets
+- [ ] Computer-use **frame streaming** over `/ws/remote` (P2, not fully wired)
 - [ ] Persona = **static friend-first prompt** (no mode tuning)
-- [ ] Remote = **mock device presence**, no real pairing/transport
-- [ ] Status bus = **heartbeat + canned events**
-- [ ] Voice = **mock provider endpoints**
+- [ ] Multi-user = **single `miori-local` identity** only
 
 ### Deferred (interface/TODO only)
+- [ ] multi-user accounts
 - [ ] packaging → v0.3

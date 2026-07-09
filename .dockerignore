@@ -1,0 +1,16 @@
+# Repo-root .dockerignore — keeps the backend image small.
+node_modules/
+.venv/
+.env
+*.db
+data/
+.git/
+target/
+.cache/
+dist/
+services/core-api/data/
+services/core-api/.venv/
+services/core-api/__pycache__/
+apps/
+packages/
+integrations/

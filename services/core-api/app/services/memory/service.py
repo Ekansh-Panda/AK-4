@@ -59,7 +59,11 @@ class MemoryService:
         user_id: str | None = None,
         meta: str | None = None,
         pinned: bool = False,
+        kind: str | None = None,
     ) -> MemoryItem:
+        # `kind` is an alias for `namespace` in this store (see Memory model).
+        if kind is not None:
+            namespace = kind
         return await self._provider.add(
             content, namespace=namespace, user_id=user_id, meta=meta, pinned=pinned
         )
