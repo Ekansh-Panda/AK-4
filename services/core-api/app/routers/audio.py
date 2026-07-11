@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
+from app.core.auth import get_current_user
 from app.services.providers.voice import registry as voice_registry
 
 router = APIRouter(prefix="/audio", tags=["audio"])
@@ -17,7 +18,10 @@ class SynthesizeRequest(BaseModel):
 
 
 @router.post("/transcribe")
-async def transcribe_audio(file: UploadFile = File(...)) -> JSONResponse:
+async def transcribe_audio(
+    file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user),
+) -> JSONResponse:
     provider = voice_registry.get()
     try:
         data = await file.read()
@@ -28,7 +32,10 @@ async def transcribe_audio(file: UploadFile = File(...)) -> JSONResponse:
 
 
 @router.post("/synthesize")
-async def synthesize_audio(body: SynthesizeRequest) -> Response:
+async def synthesize_audio(
+    body: SynthesizeRequest,
+    user_id: str = Depends(get_current_user),
+) -> Response:
     provider = voice_registry.get()
     try:
         audio_bytes = await provider.synthesize(body.text, body.voice)

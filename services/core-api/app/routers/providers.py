@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.db.session import get_db
 from app.schemas.provider import (
     ActiveProviderOut,
@@ -29,7 +30,7 @@ def _models(provider_name: str) -> list[ModelInfo]:
 
 
 @router.get("", response_model=list[ProviderInfo])
-def list_providers() -> list[ProviderInfo]:
+def list_providers(user_id: str = Depends(get_current_user)) -> list[ProviderInfo]:
     active = registry.active_name
     out: list[ProviderInfo] = []
     for provider in registry.list():
@@ -48,14 +49,14 @@ def list_providers() -> list[ProviderInfo]:
 
 
 @router.get("/models", response_model=list[ModelInfo])
-def list_models() -> list[ModelInfo]:
+def list_models(user_id: str = Depends(get_current_user)) -> list[ModelInfo]:
     """Models for the *active* provider (the one chat will use)."""
     active = registry.get()
     return _models(active.name)
 
 
 @router.get("/status", response_model=list[ProviderStatus])
-def provider_status() -> list[ProviderStatus]:
+def provider_status(user_id: str = Depends(get_current_user)) -> list[ProviderStatus]:
     active = registry.active_name
     ping_cache = registry._read_ping_cache()
     return [
@@ -71,14 +72,18 @@ def provider_status() -> list[ProviderStatus]:
 
 
 @router.get("/ping")
-async def ping_providers(refresh: bool = False) -> dict[str, bool]:
+async def ping_providers(
+    refresh: bool = False, user_id: str = Depends(get_current_user)
+) -> dict[str, bool]:
     """Ping all configured providers. Returns cached results when fresh."""
     return await registry.ping_with_cache(force_refresh=refresh)
 
 
 @router.put("/active", response_model=ActiveProviderOut)
 def set_active_provider(
-    body: SetActiveProvider, db: Session = Depends(get_db)
+    body: SetActiveProvider,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> ActiveProviderOut:
     if not registry.has(body.name):
         raise HTTPException(status_code=404, detail=f"unknown provider '{body.name}'")
@@ -87,7 +92,7 @@ def set_active_provider(
 
 
 @router.get("/orchestrator/status")
-def orchestrator_status() -> dict:
+def orchestrator_status(user_id: str = Depends(get_current_user)) -> dict:
     """Observability for the LiteLLM orchestrator."""
     from app.services.providers.orchestrator import OrchestratingProvider
     from app.services.providers.registry import registry as provider_registry

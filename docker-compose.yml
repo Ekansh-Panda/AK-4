@@ -11,7 +11,7 @@ services:
       HOST: "0.0.0.0"
       PORT: "8000"
       LITE_MODE: "true"
-      REMOTE_ENABLED: "true"
+      REMOTE_ENABLED: "false"
       SCHEDULER_ENABLED: "true"
       # Persist the SQLite DB inside the mounted volume.
       DATABASE_URL: "sqlite:////app/data/miori.db"

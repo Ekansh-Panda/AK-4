@@ -12,6 +12,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.db.session import get_db
 from app.models.device import Device
 from app.schemas.common import StatusResponse
@@ -32,7 +33,9 @@ router = APIRouter(prefix="/remote", tags=["remote"])
 
 @router.post("/devices", response_model=DeviceOut)
 def register_device(
-    body: DeviceRegister, db: Session = Depends(get_db)
+    body: DeviceRegister,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> DeviceOut:
     service = RemoteSessionService(db)
     device = service.register_device(
@@ -42,13 +45,17 @@ def register_device(
 
 
 @router.get("/devices", response_model=list[DeviceOut])
-def list_devices(db: Session = Depends(get_db)) -> list[DeviceOut]:
+def list_devices(user_id: str = Depends(get_current_user), db: Session = Depends(get_db)) -> list[DeviceOut]:
     service = RemoteSessionService(db)
     return [DeviceOut.model_validate(d) for d in service.list_devices()]
 
 
 @router.post("/devices/{device_id}/wake", response_model=DeviceOut)
-async def wake_device(device_id: str, db: Session = Depends(get_db)) -> DeviceOut:
+async def wake_device(
+    device_id: str,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DeviceOut:
     service = RemoteSessionService(db)
     device = service.set_device_state(device_id, "online")
     if not device:
@@ -63,7 +70,11 @@ async def wake_device(device_id: str, db: Session = Depends(get_db)) -> DeviceOu
 
 
 @router.post("/devices/{device_id}/sleep", response_model=DeviceOut)
-async def sleep_device(device_id: str, db: Session = Depends(get_db)) -> DeviceOut:
+async def sleep_device(
+    device_id: str,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DeviceOut:
     service = RemoteSessionService(db)
     device = service.set_device_state(device_id, "sleeping")
     if not device:
@@ -81,7 +92,9 @@ async def sleep_device(device_id: str, db: Session = Depends(get_db)) -> DeviceO
 
 @router.post("/devices/{device_id}/pairing-code", response_model=PairingCodeOut)
 def generate_pairing_code(
-    device_id: str, db: Session = Depends(get_db)
+    device_id: str,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> PairingCodeOut:
     """Generate a 6-character pairing code for a device.
 
@@ -96,7 +109,11 @@ def generate_pairing_code(
 
 
 @router.post("/pair", response_model=PairResponse)
-def pair_device(body: PairRequest, db: Session = Depends(get_db)) -> PairResponse:
+def pair_device(
+    body: PairRequest,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PairResponse:
     """Exchange a pairing code for a bearer token.
 
     The remote dashboard submits the code shown on the desktop. On success,
@@ -110,7 +127,11 @@ def pair_device(body: PairRequest, db: Session = Depends(get_db)) -> PairRespons
 
 
 @router.post("/devices/{device_id}/unpair", response_model=DeviceOut)
-def unpair_device(device_id: str, db: Session = Depends(get_db)) -> DeviceOut:
+def unpair_device(
+    device_id: str,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DeviceOut:
     """Revoke pairing for a device, invalidating its bearer token."""
     service = RemoteSessionService(db)
     device = service.unpair_device(device_id)
@@ -122,7 +143,7 @@ def unpair_device(device_id: str, db: Session = Depends(get_db)) -> DeviceOut:
 # --- Presence ---
 
 @router.get("/presence", response_model=PresenceOut)
-def get_presence(db: Session = Depends(get_db)) -> PresenceOut:
+def get_presence(user_id: str = Depends(get_current_user), db: Session = Depends(get_db)) -> PresenceOut:
     """Current remote presence: how many WS clients are connected + device list."""
     service = RemoteSessionService(db)
     devices = service.list_devices()
@@ -135,7 +156,11 @@ def get_presence(db: Session = Depends(get_db)) -> PresenceOut:
 # --- Sessions ---
 
 @router.post("/devices/{device_id}/sessions", response_model=RemoteSessionOut)
-def create_session(device_id: str, db: Session = Depends(get_db)) -> RemoteSessionOut:
+def create_session(
+    device_id: str,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> RemoteSessionOut:
     service = RemoteSessionService(db)
     if not db.get(Device, device_id):
         raise HTTPException(status_code=404, detail="device not found")
@@ -149,7 +174,7 @@ def create_session(device_id: str, db: Session = Depends(get_db)) -> RemoteSessi
 
 
 @router.get("/sessions", response_model=list[RemoteSessionOut])
-def list_sessions(db: Session = Depends(get_db)) -> list[RemoteSessionOut]:
+def list_sessions(user_id: str = Depends(get_current_user), db: Session = Depends(get_db)) -> list[RemoteSessionOut]:
     service = RemoteSessionService(db)
     return [
         RemoteSessionOut(
@@ -160,7 +185,11 @@ def list_sessions(db: Session = Depends(get_db)) -> list[RemoteSessionOut]:
 
 
 @router.delete("/sessions/{session_id}", response_model=StatusResponse)
-def end_session(session_id: str, db: Session = Depends(get_db)) -> StatusResponse:
+def end_session(
+    session_id: str,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StatusResponse:
     service = RemoteSessionService(db)
     if not service.end_session(session_id):
         raise HTTPException(status_code=404, detail="session not found")

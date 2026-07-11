@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.db.session import get_db
 from app.models.research import Research
 from app.schemas.common import StatusResponse
@@ -46,7 +47,9 @@ def _to_out(r: Research) -> ResearchOut:
 # --- routes ---
 @router.post("", response_model=ResearchOut)
 async def create_research(
-    body: ResearchCreate, db: Session = Depends(get_db)
+    body: ResearchCreate,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> ResearchOut:
     """Start a new research session.
 
@@ -67,14 +70,18 @@ async def create_research(
 
 
 @router.get("", response_model=list[ResearchOut])
-def list_research(db: Session = Depends(get_db)) -> list[ResearchOut]:
+def list_research(user_id: str = Depends(get_current_user), db: Session = Depends(get_db)) -> list[ResearchOut]:
     stmt = select(Research).order_by(Research.created_at.desc())
     rows = db.execute(stmt).scalars().all()
     return [_to_out(r) for r in rows]
 
 
 @router.get("/{research_id}", response_model=ResearchOut)
-def get_research(research_id: str, db: Session = Depends(get_db)) -> ResearchOut:
+def get_research(
+    research_id: str,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ResearchOut:
     r = db.get(Research, research_id)
     if not r:
         raise HTTPException(status_code=404, detail="research session not found")
@@ -83,7 +90,9 @@ def get_research(research_id: str, db: Session = Depends(get_db)) -> ResearchOut
 
 @router.delete("/{research_id}", response_model=StatusResponse)
 def delete_research(
-    research_id: str, db: Session = Depends(get_db)
+    research_id: str,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> StatusResponse:
     r = db.get(Research, research_id)
     if not r:

@@ -1,14 +1,16 @@
 {
   "name": "@miori/remote-dashboard",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "Miori Core — mobile remote dashboard. A phone-first PWA-style web app to talk to and control the Miori host machine over the LAN.",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix"
   },
   "dependencies": {
     "clsx": "^2.1.1",
@@ -26,5 +28,8 @@
     "tailwindcss": "^3.4.6",
     "typescript": "^5.5.3",
     "vite": "^5.3.4"
+  },
+  "eslintConfig": {
+    "extends": ["./../../.eslintrc.cjs"]
   }
 }

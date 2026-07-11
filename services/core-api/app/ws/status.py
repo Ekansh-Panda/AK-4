@@ -17,6 +17,16 @@ CHANNEL = "status"
 
 @router.websocket("/ws/status")
 async def ws_status(websocket: WebSocket) -> None:
+    if settings.MIORI_API_TOKEN:
+        token = websocket.query_params.get("token")
+        if not token:
+            auth = websocket.headers.get("authorization", "")
+            if auth.lower().startswith("bearer "):
+                token = auth[7:].strip()
+        if token != settings.MIORI_API_TOKEN:
+            await websocket.close(code=4003, reason="authentication required")
+            return
+
     await manager.connect(CHANNEL, websocket)
     try:
         while True:

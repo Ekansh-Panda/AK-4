@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.db.session import get_db
 from app.models.file import FileRecord
 from app.models.project import Project
@@ -92,7 +93,11 @@ def _to_out(p: Project, db: Session | None = None) -> ProjectOut:
 
 # --- routes ---
 @router.post("", response_model=ProjectOut)
-def create_project(body: ProjectCreate, db: Session = Depends(get_db)) -> ProjectOut:
+def create_project(
+    body: ProjectCreate,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ProjectOut:
     project = Project(name=body.name, description=body.description, brief=body.brief)
     db.add(project)
     db.commit()
@@ -130,7 +135,9 @@ def _link_items(
 
 @router.get("", response_model=list[ProjectOut])
 def list_projects(
-    status: str | None = None, db: Session = Depends(get_db)
+    status: str | None = None,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> list[ProjectOut]:
     stmt = select(Project).order_by(Project.created_at.desc())
     if status:
@@ -140,7 +147,11 @@ def list_projects(
 
 
 @router.get("/{project_id}", response_model=ProjectOut)
-def get_project(project_id: str, db: Session = Depends(get_db)) -> ProjectOut:
+def get_project(
+    project_id: str,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ProjectOut:
     p = db.get(Project, project_id)
     if not p:
         raise HTTPException(status_code=404, detail="project not found")
@@ -149,7 +160,10 @@ def get_project(project_id: str, db: Session = Depends(get_db)) -> ProjectOut:
 
 @router.patch("/{project_id}", response_model=ProjectOut)
 def update_project(
-    project_id: str, body: ProjectUpdate, db: Session = Depends(get_db)
+    project_id: str,
+    body: ProjectUpdate,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> ProjectOut:
     p = db.get(Project, project_id)
     if not p:
@@ -171,7 +185,11 @@ def update_project(
 
 
 @router.delete("/{project_id}", response_model=StatusResponse)
-def delete_project(project_id: str, db: Session = Depends(get_db)) -> StatusResponse:
+def delete_project(
+    project_id: str,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StatusResponse:
     p = db.get(Project, project_id)
     if not p:
         raise HTTPException(status_code=404, detail="project not found")

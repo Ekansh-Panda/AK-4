@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.db.session import get_db
 from app.models.file import FileRecord
 from app.schemas.common import StatusResponse
@@ -37,7 +38,9 @@ def _to_detail(record: FileRecord) -> FileDetail:
 
 @router.post("", response_model=FileDetail)
 async def upload_file(
-    file: UploadFile = File(...), db: Session = Depends(get_db)
+    file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> FileDetail:
     service = FileIngestionService(db)
     data = await file.read()
@@ -56,7 +59,11 @@ async def upload_file(
 
 
 @router.post("/{file_id}/ingest", response_model=FileDetail)
-async def ingest_file(file_id: str, db: Session = Depends(get_db)) -> FileDetail:
+async def ingest_file(
+    file_id: str,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> FileDetail:
     service = FileIngestionService(db)
     try:
         record = await service.ingest(file_id)
@@ -66,7 +73,9 @@ async def ingest_file(file_id: str, db: Session = Depends(get_db)) -> FileDetail
 
 
 @router.get("/search", response_model=list[dict])
-def search_files(q: str, k: int = 5, db: Session = Depends(get_db)) -> list[dict]:
+def search_files(
+    q: str, k: int = 5, user_id: str = Depends(get_current_user), db: Session = Depends(get_db)
+) -> list[dict]:
     service = FileIngestionService(db)
     results = service.search(query=q, limit=k)
     return [
@@ -81,13 +90,17 @@ def search_files(q: str, k: int = 5, db: Session = Depends(get_db)) -> list[dict
 
 
 @router.get("", response_model=list[FileOut])
-def list_files(db: Session = Depends(get_db)) -> list[FileOut]:
+def list_files(user_id: str = Depends(get_current_user), db: Session = Depends(get_db)) -> list[FileOut]:
     service = FileIngestionService(db)
     return [_to_out(r) for r in service.list()]
 
 
 @router.get("/{file_id}", response_model=FileDetail)
-def get_file(file_id: str, db: Session = Depends(get_db)) -> FileDetail:
+def get_file(
+    file_id: str,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> FileDetail:
     service = FileIngestionService(db)
     record = service.get(file_id)
     if not record:
@@ -96,7 +109,11 @@ def get_file(file_id: str, db: Session = Depends(get_db)) -> FileDetail:
 
 
 @router.delete("/{file_id}", response_model=StatusResponse)
-def delete_file(file_id: str, db: Session = Depends(get_db)) -> StatusResponse:
+def delete_file(
+    file_id: str,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StatusResponse:
     service = FileIngestionService(db)
     if not service.delete(file_id):
         raise HTTPException(status_code=404, detail="file not found")

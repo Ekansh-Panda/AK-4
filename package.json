@@ -19,7 +19,10 @@
     "build:desktop": "pnpm --filter @miori/desktop build",
     "build:remote": "pnpm --filter @miori/remote-dashboard build",
     "typecheck": "pnpm -r --if-present typecheck",
-    "analyze:repos": "python scripts/analyze_repos.py"
+    "analyze:repos": "python scripts/analyze_repos.py",
+    "lint": "pnpm -r lint",
+    "lint:fix": "pnpm -r lint:fix",
+    "build": "pnpm -r build"
   },
   "keywords": [
     "miori",
@@ -29,5 +32,16 @@
     "tauri",
     "fastapi",
     "monorepo"
-  ]
+  ],
+  "eslintConfig": {
+    "root": true,
+    "extends": [
+      "eslint:recommended"
+    ]
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "7.17.0",
+    "@typescript-eslint/parser": "7.17.0",
+    "eslint": "8.57.1"
+  }
 }

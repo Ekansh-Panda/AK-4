@@ -10,6 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.db.session import get_db
 from app.schemas.persona import PersonaModeUpdate, PersonaOut
 from app.services.persona.service import DEFAULT_MODE, PersonaService
@@ -41,17 +42,24 @@ def _persona_out(db: Session, mode: str) -> PersonaOut:
 
 
 @router.get("", response_model=PersonaOut)
-def get_persona(db: Session = Depends(get_db)) -> PersonaOut:
+def get_persona(
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PersonaOut:
     return _persona_out(db, _default_mode(db))
 
 
 @router.get("/modes", response_model=list[str])
-def list_modes() -> list[str]:
+def list_modes(user_id: str = Depends(get_current_user)) -> list[str]:
     return PersonaService().list_modes()
 
 
 @router.post("/mode", response_model=PersonaOut)
-def set_mode(body: PersonaModeUpdate, db: Session = Depends(get_db)) -> PersonaOut:
+def set_mode(
+    body: PersonaModeUpdate,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PersonaOut:
     if not PersonaService.is_valid_mode(body.mode):
         raise HTTPException(status_code=400, detail=f"Unknown persona mode '{body.mode}'")
     SettingsService(db).set(PERSONA_MODE_KEY, body.mode)

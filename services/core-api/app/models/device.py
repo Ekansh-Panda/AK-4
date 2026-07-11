@@ -32,7 +32,7 @@ class Device(UUIDMixin, TimestampMixin, Base):
     pairing_secret_hash: Mapped[str | None] = mapped_column(
         String(64), nullable=True, default=None
     )
-    # Bearer token issued on successful pairing (stored to validate remote WS).
+    # SHA-256 hex digest of the bearer token issued on pairing. Null until paired.
     bearer_token: Mapped[str | None] = mapped_column(
-        Text, nullable=True, default=None
+        String(64), nullable=True, default=None
     )

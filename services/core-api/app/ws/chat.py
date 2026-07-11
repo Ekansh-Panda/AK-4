@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.session import SessionLocal
 from app.services.chat_service import ChatService
@@ -28,6 +29,16 @@ CHANNEL = "chat"
 
 @router.websocket("/ws/chat")
 async def ws_chat(websocket: WebSocket) -> None:
+    if settings.MIORI_API_TOKEN:
+        token = websocket.query_params.get("token")
+        if not token:
+            auth = websocket.headers.get("authorization", "")
+            if auth.lower().startswith("bearer "):
+                token = auth[7:].strip()
+        if token != settings.MIORI_API_TOKEN:
+            await websocket.close(code=4003, reason="authentication required")
+            return
+
     await manager.connect(CHANNEL, websocket)
     try:
         while True:

@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     # --- Feature flags ---
     # When True, remote dashboard / device sync endpoints are active.
     # TODO(Mark-XLVI): wire real remote session transport when enabled.
-    REMOTE_ENABLED: bool = True
+    REMOTE_ENABLED: bool = False
 
     # Lite mode keeps optional heavy deps (vector stores, embeddings, real model
     # providers) lazy/disabled so Miori stays usable on low-end machines.

@@ -13,15 +13,21 @@ Protocol:
 
 Authentication: pass `token` query parameter with a valid device bearer token,
 or set Authorization header. Unauthenticated connections are accepted but
-marked as "observer" (can receive broadcasts but cannot send commands).
+marked as "observer" (can receive broadcasts but cannot send commands) when
+MIORI_API_TOKEN is not set. When MIORI_API_TOKEN is set, all connections
+must authenticate.
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.db.session import SessionLocal
+from app.models.device import Device
+from app.services.remote.service import _hash_secret
 from app.ws import manager
 
 logger = get_logger(__name__)
@@ -39,21 +45,24 @@ async def _broadcast_presence() -> None:
     })
 
 
-def _authenticate_ws(websocket: WebSocket) -> str | None:
-    """Extract and validate bearer token from WS query params or headers.
+def _authenticate_ws(websocket: WebSocket) -> bool:
+    """Extract and validate a device bearer token from WS query params or headers.
 
-    Returns the token string if present (validation against DB is deferred
-    to avoid importing DB session at module level). Returns None if no token.
+    Checks the database to confirm the token is associated with a registered
+    device. Returns True if a valid device token is found, False otherwise.
     """
-    # Check query parameter first (preferred for WS).
-    token = websocket.query_params.get("token")
-    if token:
-        return token
-    # Fall back to Authorization header.
-    auth = websocket.headers.get("authorization", "")
-    if auth.lower().startswith("bearer "):
-        return auth[7:].strip()
-    return None
+    raw_token = websocket.query_params.get("token")
+    if not raw_token:
+        auth = websocket.headers.get("authorization", "")
+        if auth.lower().startswith("bearer "):
+            raw_token = auth[7:].strip()
+    if not raw_token:
+        return False
+
+    with SessionLocal() as db:
+        stmt = select(Device).where(Device.bearer_token == _hash_secret(raw_token))
+        result = db.execute(stmt).scalar_one_or_none()
+        return result is not None
 
 
 @router.websocket("/ws/remote")
@@ -62,8 +71,11 @@ async def ws_remote(websocket: WebSocket) -> None:
         await websocket.close(code=4003, reason="remote disabled")
         return
 
-    token = _authenticate_ws(websocket)
-    is_authenticated = token is not None
+    is_authenticated = _authenticate_ws(websocket)
+
+    if settings.MIORI_API_TOKEN and not is_authenticated:
+        await websocket.close(code=4003, reason="invalid token")
+        return
 
     await manager.connect(CHANNEL, websocket)
     logger.info(

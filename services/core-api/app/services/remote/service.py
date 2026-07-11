@@ -123,7 +123,7 @@ class RemoteSessionService:
         # Pairing successful: hash the code, issue a bearer token.
         token = _generate_bearer_token()
         device.pairing_secret_hash = _hash_secret(code.upper())
-        device.bearer_token = token
+        device.bearer_token = _hash_secret(token)
         device.is_paired = True
         device.last_seen_at = datetime.now(timezone.utc)
         self._db.commit()
@@ -136,7 +136,7 @@ class RemoteSessionService:
 
     def validate_bearer_token(self, token: str) -> Device | None:
         """Look up a device by its bearer token. Returns the device if valid."""
-        stmt = select(Device).where(Device.bearer_token == token)
+        stmt = select(Device).where(Device.bearer_token == _hash_secret(token))
         return self._db.execute(stmt).scalar_one_or_none()
 
     def unpair_device(self, device_id: str) -> Device | None:

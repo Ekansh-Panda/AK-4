@@ -46,5 +46,11 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
+      - name: Lint frontends
+        run: pnpm lint
+
       - name: Typecheck frontends
         run: pnpm -r --if-present typecheck
+
+      - name: Build frontends
+        run: pnpm build

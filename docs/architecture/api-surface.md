@@ -5,9 +5,9 @@
 >
 > Status tags reflect the current v1.1.0 reality: core intelligence, providers, file
 > ingestion, memory, tasks, computer-use, voice, projects, research, a real
-> `/ws/status` fan-out bus, tools/agent approval, and single-user auth are
-> **implemented**. Remote pairing + computer-use frame streaming remain **mocked/planned**
-> (intentionally, per constraints).
+> `/ws/status` fan-out bus, tools/agent approval, single-user auth, and a real
+> remote pairing → bearer-token flow are **implemented**. Remote WAN transport and
+> high-latency frame streaming remain **mocked/planned** (intentionally, per constraints).
 >
 > Related: [System Overview](system-overview.md) · [Data Model](data-model.md) · [Feature Matrix](../feature-matrix.md)
 
@@ -77,13 +77,23 @@ REST handles session CRUD + history; live streaming is on `/ws/chat`.
 > Prompt profiles sourced from `packages/prompts/`; service degrades gracefully if the dir is missing.
 
 ### Remote — `/api/remote` · `routers/remote.py`
-Gated by `REMOTE_ENABLED`.
+Gated by `REMOTE_ENABLED`. Pairing flow: desktop generates a 6-char code → remote
+dashboard submits it → backend returns a bearer token → token is used for
+REST + `/ws/remote` WebSocket auth.
+
 | Method | Path | Request | Response | Status |
 |---|---|---|---|---|
-| GET | `/api/remote/devices` | — | list of `Device` + presence | mock |
-| POST | `/api/remote/pair` | `{name, platform}` | `Device` (`is_paired=true`) — **mock pairing, no real secret** | planned |
-| POST | `/api/remote/devices/{id}/wake` | — | `{ok}` | planned |
-| DELETE | `/api/remote/devices/{id}` | — | `{ok}` | mock |
+| POST | `/api/remote/devices` | `{name, platform?, user_id?}` | created `Device` | implemented |
+| GET | `/api/remote/devices` | — | list of `Device` (persisted) | implemented |
+| POST | `/api/remote/devices/{id}/pairing-code` | — | `PairingCodeOut` (single-use 6-char code) | implemented |
+| POST | `/api/remote/pair` | `{device_id, code}` | `PairResponse` with bearer `token` | implemented |
+| POST | `/api/remote/devices/{id}/unpair` | — | updated `Device` | implemented |
+| POST | `/api/remote/devices/{id}/wake` | — | updated `Device` + WS broadcast | implemented |
+| POST | `/api/remote/devices/{id}/sleep` | — | updated `Device` + WS broadcast | implemented |
+| GET | `/api/remote/presence` | — | `PresenceOut` with connected count + devices | implemented |
+| POST | `/api/remote/devices/{id}/sessions` | — | created `RemoteSession` | implemented |
+| GET | `/api/remote/sessions` | — | list of `RemoteSession` | implemented |
+| DELETE | `/api/remote/sessions/{id}` | — | `{ok}` | implemented |
 
 ### Tasks — `/api/tasks` · `routers/tasks.py`
 | Method | Path | Request | Response | Status |
@@ -160,10 +170,13 @@ All WS messages are JSON envelopes: `{ "type": "...", ... }`.
 - **Status:** implemented (real event fan-out: task due, research, tool_approval, provider reachability, presence-orb state). Heartbeat is still emitted every 5s.
 
 ### `/ws/remote` · `ws/remote.py` — remote presence & control
-- **Client → server:** `{type:"hello", device}` · `{type:"command", action, args}`
-- **Server → client:** `{type:"presence", devices}` · `{type:"ack", id}` · `{type:"frame", ...}` (computer-use, P2)
+- **Client → server:** `{type:"presence"}` · `{type:"command", action, device_id, ...}` · `{type:"frame", action, args}`
+- **Server → client:** `{type:"presence", connected, devices}` · `{type:"command", ...}` · `{type:"frame_result", status, result}` · `{type:"error", detail}`
+- Authentication: bearer `token` query param or `Authorization` header. Unauthenticated
+  connections are observers (receive broadcasts but cannot send commands).
 - Gated by `REMOTE_ENABLED`.
-- **Status:** mock presence; real transport + pairing + computer-use frames are **planned** (Mark-XLVI / computer-use repos).
+- **Status:** implemented (real pairing flow, bearer-token auth, presence broadcast,
+  command relay, computer-use frame execution via `run_tool`).
 
 ---
 
@@ -171,8 +184,8 @@ All WS messages are JSON envelopes: `{ "type": "...", ... }`.
 
 | Bucket | Endpoints |
 |---|---|
-| **Real** | `/api/health`, session/message/memory/task/file/setting **persistence**, `/ws/chat` streaming, `/api/providers` (+ `/status` + `/ping`), `/api/persona`, memory `search`, `/api/settings/computer-use/*`, `/api/tools` (approve/reject), `/api/files/search`, `/api/audio` (transcribe/synthesize), `/api/projects`, `/api/research`, real single-user `auth`, `/ws/status` event fan-out |
-| **Mock (wired, canned/echo)** | `/api/remote/devices` |
-| **Planned (interface/TODO only)** | real WAN remote transport + pairing secrets, `/ws/remote` computer-use frame streaming |
+| **Real** | `/api/health`, session/message/memory/task/file/setting **persistence**, `/ws/chat` streaming, `/api/providers` (+ `/status` + `/ping`), `/api/persona`, memory `search`, `/api/settings/computer-use/*`, `/api/tools` (approve/reject), `/api/files/search`, `/api/audio` (transcribe/synthesize), `/api/projects`, `/api/research`, real single-user `auth`, `/ws/status` event fan-out, `/api/remote` (/devices, /pair, /pairing-code, /wake, /sleep, /unpair, /presence, /sessions), `/ws/remote` command relay + frame execution |
+| **Mock (wired, canned/echo)** | — |
+| **Planned (interface/TODO only)** | real WAN remote transport, high-latency `/ws/remote` frame streaming |
 
 The authoritative flip-list is [TASKS.md](../../TASKS.md); the capability→repo mapping is the [feature matrix](../feature-matrix.md).

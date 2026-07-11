@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "miori-core-api"
+version = "1.1.0"
+description = "Miori Core — FastAPI backend"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "pydantic>=2.12,<3",
+    "pydantic-settings>=2.7,<3",
+    "SQLAlchemy>=2.0.41,<3",
+    "python-multipart==0.0.20",
+    "websockets==14.1",
+    "httpx==0.28.1",
+    "litellm==1.83.7",
+    "pypdf==5.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.4",
+    "pytest-asyncio==0.23.7",
+]
+full = [
+    "huggingface_hub>=0.24",
+    "cohere>=5.11",
+    "sentence-transformers>=2.7",
+    "numpy>=1.26",
+    "APScheduler==3.10.4",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

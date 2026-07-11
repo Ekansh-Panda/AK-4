@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.db.session import get_db
 from app.models.memory import Memory
 from app.schemas.common import StatusResponse
@@ -21,7 +22,11 @@ router = APIRouter(prefix="/memory", tags=["memory"])
 
 
 @router.post("", response_model=MemoryOut)
-async def add_memory(body: MemoryCreate, db: Session = Depends(get_db)) -> MemoryOut:
+async def add_memory(
+    body: MemoryCreate,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MemoryOut:
     service = MemoryService(db)
     item = await service.add(
         body.content,
@@ -39,6 +44,7 @@ def list_memory(
     kind: str | None = Query(None, description="Filter by namespace/kind"),
     pinned: bool | None = Query(None, description="Filter by pinned state"),
     limit: int = Query(50, ge=1, le=500),
+    user_id: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[MemoryOut]:
     service = MemoryService(db)
@@ -52,7 +58,9 @@ def list_memory(
 
 @router.post("/search", response_model=list[MemorySearchResult])
 async def search_memory(
-    body: MemorySearchRequest, db: Session = Depends(get_db)
+    body: MemorySearchRequest,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> list[MemorySearchResult]:
     service = MemoryService(db)
     results: list[MemorySearchResult] = []
@@ -68,7 +76,11 @@ async def search_memory(
 
 
 @router.get("/{memory_id}", response_model=MemoryOut)
-def get_memory(memory_id: str, db: Session = Depends(get_db)) -> MemoryOut:
+def get_memory(
+    memory_id: str,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MemoryOut:
     row = db.get(Memory, memory_id)
     if not row:
         raise HTTPException(status_code=404, detail="memory not found")
@@ -77,7 +89,10 @@ def get_memory(memory_id: str, db: Session = Depends(get_db)) -> MemoryOut:
 
 @router.patch("/{memory_id}", response_model=MemoryOut)
 def update_memory(
-    memory_id: str, body: MemoryUpdate, db: Session = Depends(get_db)
+    memory_id: str,
+    body: MemoryUpdate,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> MemoryOut:
     service = MemoryService(db)
     item = service.update(memory_id, content=body.content, pinned=body.pinned)
@@ -88,7 +103,11 @@ def update_memory(
 
 
 @router.delete("/{memory_id}", response_model=StatusResponse)
-def delete_memory(memory_id: str, db: Session = Depends(get_db)) -> StatusResponse:
+def delete_memory(
+    memory_id: str,
+    user_id: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StatusResponse:
     service = MemoryService(db)
     if not service.delete(memory_id):
         raise HTTPException(status_code=404, detail="memory not found")
