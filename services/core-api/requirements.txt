@@ -11,4 +11,5 @@ websockets==14.1
 # Real providers (OpenAI-compatible, Gemini) + PDF file ingestion.
 # Imported LAZILY so the app still boots in lite mode when absent.
 httpx==0.28.1
+litellm==1.83.7
 pypdf==5.1.0

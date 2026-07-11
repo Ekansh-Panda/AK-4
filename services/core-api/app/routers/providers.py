@@ -13,17 +13,18 @@ from app.schemas.provider import (
     ProviderStatus,
     SetActiveProvider,
 )
+from app.services.providers.capability_matrix import list_models as list_models_from_matrix
 from app.services.providers.registry import registry
 
 router = APIRouter(prefix="/providers", tags=["providers"])
 
 
-def _models(provider) -> list[ModelInfo]:
+def _models(provider_name: str) -> list[ModelInfo]:
     return [
         ModelInfo(
             id=m.id, name=m.name, provider=m.provider, context_window=m.context_window
         )
-        for m in provider.list_models()
+        for m in list_models_from_matrix(provider_name)
     ]
 
 
@@ -40,7 +41,7 @@ def list_providers() -> list[ProviderInfo]:
                 available=avail,
                 configured=avail,
                 active=provider.name == active,
-                models=_models(provider),
+                models=_models(provider.name),
             )
         )
     return out
@@ -49,7 +50,8 @@ def list_providers() -> list[ProviderInfo]:
 @router.get("/models", response_model=list[ModelInfo])
 def list_models() -> list[ModelInfo]:
     """Models for the *active* provider (the one chat will use)."""
-    return _models(registry.get())
+    active = registry.get()
+    return _models(active.name)
 
 
 @router.get("/status", response_model=list[ProviderStatus])
@@ -82,3 +84,28 @@ def set_active_provider(
         raise HTTPException(status_code=404, detail=f"unknown provider '{body.name}'")
     name = registry.persist_active(db, body.name)
     return ActiveProviderOut(active=name)
+
+
+@router.get("/orchestrator/status")
+def orchestrator_status() -> dict:
+    """Observability for the LiteLLM orchestrator."""
+    from app.services.providers.orchestrator import OrchestratingProvider
+    from app.services.providers.registry import registry as provider_registry
+
+    orch = OrchestratingProvider(registry=provider_registry)
+    ls = orch.last_served()
+    total = orch._total_attempts or 1
+    return {
+        "enabled": True,
+        "available": orch.available(),
+        "last_served": {
+            "provider": ls[0] if ls else None,
+            "model": ls[1] if ls else None,
+        },
+        "counters": {
+            "first_try_success_ratio": orch._first_try_success / total,
+            "failovers_total": orch._failover_count,
+            "total_attempts": orch._total_attempts,
+        },
+    }
+

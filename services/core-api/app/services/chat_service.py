@@ -11,11 +11,13 @@ from collections.abc import AsyncIterator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.models.message import Message
 from app.models.session import ChatSession
 from app.services.persona.service import DEFAULT_MODE, PersonaService
 from app.services.providers.base import ChatMessage
+from app.services.providers.orchestrator import OrchestratingProvider
 from app.services.providers.registry import ProviderRegistry
 from app.services.providers.registry import registry as provider_registry
 from app.services.tools.registry import registry as tool_registry
@@ -108,6 +110,18 @@ class ChatService:
         return PersonaService.normalize_mode(session.persona_mode)
 
     # --- turns ---
+    def _get_orchestrator(self) -> OrchestratingProvider:
+        if not hasattr(self, "_orchestrator"):
+            self._orchestrator = OrchestratingProvider(registry=self._providers)
+        return self._orchestrator
+
+    def _select_provider(self, *, model: str | None):
+        if settings.ORCHESTRATOR_ENABLED:
+            orch = self._get_orchestrator()
+            if orch.available():
+                return orch, True
+        return self._providers.get(), False
+
     async def respond(
         self,
         *,
@@ -123,7 +137,7 @@ class ChatService:
         )
         mode = self._resolve_mode(session, persona_mode)
         self._persist(session.id, "user", user_text)
-        provider = self._providers.get()
+        provider, using_orchestrator = self._select_provider(model=model)
         msgs = self._build_provider_messages(session.id)
         system_prompt = self._persona.build_prompt(
             mode, context=await self._recall_context(user_text, user_id)
@@ -200,8 +214,24 @@ class ChatService:
             logger.warning("Provider %s chat failed, using mock: %s", provider.name, exc)
             provider = self._providers.get("mock")
             reply_text = await provider.chat(msgs, system_prompt=system_prompt)
+            reply = self._persist(session.id, "assistant", reply_text, model=provider.name)
+            return session, reply
         
-        reply = self._persist(session.id, "assistant", reply_text, model=provider.name)
+        served_model = provider.name
+        if using_orchestrator:
+            orch = self._get_orchestrator()
+            ls = orch.last_served()
+            if ls:
+                served_model = ls[1]
+        
+        reply = self._persist(session.id, "assistant", reply_text, model=served_model)
+        if using_orchestrator:
+            from app.ws import manager
+            await manager.broadcast("status", {
+                "type": "provider",
+                "provider": (self._get_orchestrator().last_served() or ("mock", "mock-echo"))[0],
+                "model": served_model,
+            })
         await self._store_facts(user_text, user_id)
         await self._maybe_summarize(session.id)
         return session, reply
@@ -227,7 +257,7 @@ class ChatService:
         self._persist(session.id, "user", user_text)
         yield ("session", session.id)
 
-        provider = self._providers.get()
+        provider, using_orchestrator = self._select_provider(model=model)
         msgs = self._build_provider_messages(session.id)
         system_prompt = self._persona.build_prompt(
             mode, context=await self._recall_context(user_text, user_id)
@@ -316,9 +346,23 @@ class ChatService:
             else:
                 yield ("error", f"provider error: {exc}")
 
+        served_model = provider.name
+        if using_orchestrator:
+            orch = self._get_orchestrator()
+            ls = orch.last_served()
+            if ls:
+                served_model = ls[1]
+        
         self._persist(
-            session.id, "assistant", "".join(chunks).strip(), model=provider.name
+            session.id, "assistant", "".join(chunks).strip(), model=served_model
         )
+        if using_orchestrator:
+            from app.ws import manager
+            await manager.broadcast("status", {
+                "type": "provider",
+                "provider": (self._get_orchestrator().last_served() or ("mock", "mock-echo"))[0],
+                "model": served_model,
+            })
         await self._store_facts(user_text, user_id)
         await self._maybe_summarize(session.id)
         yield ("done", session.id)
