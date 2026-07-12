@@ -43,6 +43,7 @@ function statusToPresence(data: Record<string, unknown>): PresenceState | null {
       return null;
     }
     case "tool_approval":
+    case "step_approval_needed":
       return "thinking";
     default:
       return null;

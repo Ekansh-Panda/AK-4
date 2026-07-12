@@ -40,8 +40,10 @@ export function connectionTone(status: ConnectionStatus): { tone: Tone; label: s
       return { tone: "positive", label: "Connected" };
     case "connecting":
       return { tone: "warn", label: "Connecting" };
+    case "degraded":
+      return { tone: "warn", label: "Degraded · auth/unavailable" };
     default:
-      return { tone: "muted", label: "Offline · mocks" };
+      return { tone: "muted", label: "Offline" };
   }
 }
 

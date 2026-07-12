@@ -6,8 +6,16 @@
 /** Miori's live presence — drives the orb + status badge. */
 export type PresenceState = "idle" | "listening" | "thinking" | "speaking" | "error";
 
-/** Backend / device reachability. */
-export type ConnectionStatus = "connected" | "connecting" | "offline";
+/**
+ * Backend / device reachability.
+ * - `degraded`: server is up but a scoped call failed with 401/503
+ *   (auth required or a dependency is unavailable).
+ */
+export type ConnectionStatus =
+  | "connected"
+  | "connecting"
+  | "offline"
+  | "degraded";
 
 /** Persona "mood" — how warm vs. focused Miori feels. */
 export type PersonaMode = "warm" | "focused" | "playful" | "quiet";
@@ -311,9 +319,122 @@ export interface ApiHealth {
 
 /** Discriminated result so callers can distinguish "live" vs "fell back". */
 export interface ApiResult<T> {
+  /**
+   * Parsed body when `ok`, otherwise a neutral empty value (never mock data).
+   * Callers must gate real reads on `ok`.
+   */
   data: T;
-  /** true when the request hit the backend; false when we served the fallback. */
+  /** true when the request hit the backend; false on any error / non-2xx. */
   ok: boolean;
-  /** HTTP status when known (e.g. 413 for oversize uploads). */
+  /** HTTP status when known (e.g. 401 auth required, 413 oversize, 503 down). */
   status?: number;
+  /** Human-readable failure reason when `ok` is false. */
+  error?: string;
+  /** true for 401 responses — the backend requires authentication. */
+  authRequired?: boolean;
+  /** true for 503 responses — the backend is reachable but a dep is down. */
+  unavailable?: boolean;
+}
+
+/* ----------------------------------------------------------------------------
+ * Plans (computer-control execution plans) — mirror app/schemas/plan.py.
+ * ------------------------------------------------------------------------- */
+
+/** Lifecycle status for a plan. */
+export type PlanStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "rejected";
+
+/** Lifecycle status for a single plan step. */
+export type PlanStepStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "pending_approval"
+  | "rejected";
+
+/** services/core-api: PlanOut. */
+export interface ApiPlan {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  user_id: string;
+  device_id: string;
+  goal: string;
+  trust_level: string;
+  status: string;
+  parallel: boolean;
+  completed_at: string | null;
+  error: string | null;
+}
+
+/** services/core-api: PlanStepOut. */
+export interface ApiPlanStep {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  plan_id: string;
+  parent_step_id: string | null;
+  step_order: number;
+  action: string;
+  args_json: string | null;
+  status: string;
+  result: string | null;
+  error: string | null;
+  retries: number;
+  screencap_path: string | null;
+  completed_at: string | null;
+}
+
+/** services/core-api: PlanDetail (PlanOut + steps). */
+export interface ApiPlanDetail extends ApiPlan {
+  steps: ApiPlanStep[];
+}
+
+/** services/core-api: PlanStepCreate. */
+export interface ApiPlanStepCreate {
+  action: string;
+  args_json?: string | Record<string, unknown> | null;
+  parent_step_id?: string | null;
+  step_order?: number;
+}
+
+/** services/core-api: PlanCreate. */
+export interface ApiPlanCreate {
+  goal: string;
+  parallel?: boolean;
+  trust_level?: string;
+  steps?: ApiPlanStepCreate[];
+}
+
+/** services/core-api: SubPlanCreate. */
+export interface ApiSubPlanCreate {
+  parent_step_id: string;
+  goal: string;
+  trust_level?: string;
+}
+
+/** services/core-api: ComputerUseSettings (GET/PUT /settings/computer-use). */
+export interface ApiComputerUseSettings {
+  trust_level: string;
+  max_steps: number;
+  plan_timeout_s: number;
+  vision_enabled: boolean;
+  audio_enabled: boolean;
+  double_verify: boolean;
+  browser_enabled: boolean;
+}
+
+/** A single computer-use audit-log row (GET /settings/computer-use/audit). */
+export interface ApiComputerUseAudit {
+  ts: string | number;
+  action: string;
+  args?: unknown;
+  outcome?: string;
+  error?: string | null;
 }

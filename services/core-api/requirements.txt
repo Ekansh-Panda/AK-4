@@ -13,3 +13,9 @@ websockets==14.1
 httpx==0.28.1
 litellm==1.83.7
 pypdf==5.1.0
+
+# Continuous vision engine (Module 6) — local, CPU-friendly screen
+# understanding. HARD dependency when COMPUTER_USE_ENABLED=true. The library
+# and its Pillow/torch deps are imported lazily so the API still boots where
+# the model is not provisioned.
+moondream>=0.1.0

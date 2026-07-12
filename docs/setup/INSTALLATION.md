@@ -272,9 +272,17 @@ which provider keys are set (masked).
 
 | File | What it installs | When |
 | --- | --- | --- |
-| `requirements.txt` | FastAPI, pydantic, SQLAlchemy, httpx, … | Always (default) |
+| `requirements.txt` | FastAPI, pydantic, SQLAlchemy, httpx, litellm, pypdf, **moondream** | Always |
 | `requirements-dev.txt` | Above + pytest | Default bootstrap |
-| `requirements-optional.txt` | sentence-transformers, numpy, cohere, APScheduler, … | `--full` flag only |
+| `requirements-optional.txt` | **pytesseract**, **mss**, huggingface_hub, cohere, sentence-transformers, numpy, APScheduler | `--full` flag only |
+
+### Computer-use & perception dependencies
+
+- **`moondream>=0.1.0`** — core dependency for continuous vision. Local CPU-friendly screen understanding.
+- **`pytesseract>=0.3.10`** + system `tesseract` binary — OCR fallback when Moondream confidence is low. Install with `sudo apt install tesseract-ocr` (Debian/Ubuntu) or `brew install tesseract` (macOS).
+- **`mss>=9.0.1`** — lightweight cross-platform screenshot backend.
+- **`playwright`** — lazy-imported, gated behind `COMPUTER_USE_BROWSER_ENABLED`. Install manually if you need browser automation: `pip install playwright && playwright install chromium`.
+- **`pyautogui`** — hard dependency for desktop actions when `COMPUTER_USE_ENABLED=true`. Install with `pip install pyautogui`.
 
 ### Manual install (if you prefer)
 
@@ -569,3 +577,15 @@ If the venv was created with a different Python, delete it and re-run
 v1 backfills new columns additively on boot (no Alembic). If something seems off,
 stop the backend, delete `services/core-api/miori.db`, and restart to recreate
 it — or run `scripts/db-init.sh`.
+
+## 15. Computer-use & perception dependencies
+
+- **`moondream>=0.1.0`** — now a core dependency. Local CPU-friendly vision model for continuous screen understanding. Downloaded automatically on first use.
+- **`pytesseract>=0.3.10`** + system `tesseract` binary — OCR fallback when Moondream confidence is low. Install the binary: `sudo apt install tesseract-ocr` (Debian/Ubuntu), `brew install tesseract` (macOS), or `choco install tesseract` (Windows).
+- **`mss>=9.0.1`** — lightweight cross-platform screenshot backend.
+- **`playwright`** — lazy-imported and gated behind `COMPUTER_USE_BROWSER_ENABLED`. Install manually if you need browser automation:
+  ```bash
+  pip install playwright
+  playwright install chromium
+  ```
+- **`pyautogui`** — hard dependency for desktop actions (click, type, scroll) when `COMPUTER_USE_ENABLED=true`. Install with `pip install pyautogui`. A missing install raises immediately when desktop actions are attempted.

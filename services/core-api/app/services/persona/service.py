@@ -10,11 +10,24 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from typing import TYPE_CHECKING
+
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.services.persona.evolution import EVOLUTION_KIND, PersonaEvolutionService
 from app.services.persona.schema import PersonaConfig
 
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
 logger = get_logger(__name__)
+
+# Header prefixing the appended self-evolution block in the system prompt.
+EVOLUTION_HEADER = "What you have learned about this user over time:"
+
+# Re-exported so callers can `from app.services.persona.service import
+# PersonaEvolutionService` alongside PersonaService (Module 10).
+__all__ = ["PersonaService", "PersonaEvolutionService"]
 
 # Supported persona modes and their relationship framing.
 MODES: dict[str, str] = {
@@ -140,12 +153,20 @@ class PersonaService:
                 logger.warning("Could not read prompt %s: %s", candidate, exc)
         return None
 
-    def build_prompt(self, mode: str | None, context: str | None = None) -> str:
+    def build_prompt(
+        self,
+        mode: str | None,
+        context: str | None = None,
+        *,
+        evolution: str | None = None,
+    ) -> str:
         """Compose the system prompt for ``mode`` (stateless).
 
         The shared voice fragment is prepended to the mode-specific prompt;
         degrades to a built-in fallback if no prompt file is found. An optional
         ``context`` block (e.g. recalled memories) is prepended ahead of both.
+        An optional ``evolution`` block (Module 10 self-evolving persona) is
+        appended after the base prompt so learned preferences steer the reply.
         """
         mode = self.normalize_mode(mode)
         loaded = self._load_prompt_file(mode)
@@ -159,9 +180,45 @@ class PersonaService:
                 self._prompts_dir,
             )
             base = _FALLBACK_PROMPTS.get(mode, _FALLBACK_PROMPTS[DEFAULT_MODE])
+        if evolution and evolution.strip():
+            base = f"{base}\n\n{EVOLUTION_HEADER}\n{evolution.strip()}".strip()
         if context:
             return f"{context}\n\n{base}".strip()
         return base
+
+    def build_prompt_with_evolution(
+        self,
+        mode: str | None,
+        context: str | None = None,
+        *,
+        db: "Session | None" = None,
+        user_id: str | None = None,
+        evolution: str | None = None,
+    ) -> str:
+        """Like :meth:`build_prompt` but appends the user's evolution block.
+
+        Pass ``evolution`` directly, or provide ``db`` (and optionally
+        ``user_id``) to fetch the latest stored ``persona:evolution`` block.
+        Stays stateless and best-effort: a missing block simply yields the
+        normal prompt.
+        """
+        if evolution is None and db is not None:
+            evolution = self.latest_evolution(db, user_id)
+        return self.build_prompt(mode, context=context, evolution=evolution)
+
+    @staticmethod
+    def latest_evolution(db: "Session", user_id: str | None = None) -> str | None:
+        """Return the most recent ``persona:evolution`` block for ``user_id``."""
+        try:
+            from app.services.memory.service import MemoryService
+
+            mem = MemoryService(db)
+            for item in mem.list(kind=EVOLUTION_KIND, limit=50):
+                if user_id is None or item.user_id is None or item.user_id == user_id:
+                    return item.content
+        except Exception as exc:  # noqa: BLE001 - non-blocking
+            logger.debug("evolution lookup skipped: %s", exc)
+        return None
 
     # --- config ---
     def get_persona(self) -> PersonaConfig:

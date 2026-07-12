@@ -76,6 +76,39 @@ class Settings(BaseSettings):
     # Must also have COMPUTER_USE_ENABLED=True.
     COMPUTER_USE_SHELL_ENABLED: bool = False
 
+    # --- Computer Use: trust, planning, perception ---
+    COMPUTER_USE_TRUST_LEVEL: str = "manual"
+    COMPUTER_USE_MAX_STEPS: int = 50
+    COMPUTER_USE_PLAN_TIMEOUT_S: int = 600
+    COMPUTER_USE_VISION_ENABLED: bool = True
+    COMPUTER_USE_AUDIO_ENABLED: bool = False
+    COMPUTER_USE_DOUBLE_VERIFY: bool = True
+    COMPUTER_USE_BROWSER_ENABLED: bool = False
+
+    # --- Computer Use: continuous vision (Module 6) ---
+    # Moondream is the local, CPU-friendly primary backend and a HARD dependency
+    # when computer use is enabled. Vision runs by default (no opt-in) once
+    # COMPUTER_USE_ENABLED and COMPUTER_USE_VISION_ENABLED are true.
+    # Local moondream model file/identifier (e.g. "moondream-2b-int8.mf").
+    # If None, moondream auto-downloads its default int8 checkpoint.
+    MOONDREAM_MODEL_PATH: str | None = None
+
+    # Where timestamped screencaps are written during continuous capture.
+    COMPUTER_USE_VISION_SCREENCAP_DIR: str = "./data/vision_screencaps"
+
+    # Continuous capture cadence (seconds between screenshots while a plan runs).
+    COMPUTER_USE_VISION_INTERVAL_S: int = 2
+
+    # If Moondream's parsed structured confidence drops below this, the engine
+    # falls back to pytesseract OCR (then to the optional cloud vision LLM).
+    COMPUTER_USE_VISION_OCR_THRESHOLD: float = 0.7
+
+    # Cost-aware cloud vision escalation (gpt-4o / gemini-1.5-pro). OFF by
+    # default — only used when local analysis + OCR both fail. Uses the existing
+    # provider keys (OPENAI_*/GEMINI_*).
+    COMPUTER_USE_VISION_LLM_ENABLED: bool = False
+    COMPUTER_USE_VISION_LLM_MODEL: str = "gpt-4o"
+
     # When True, the APScheduler background task system is spun up.
     SCHEDULER_ENABLED: bool = True
 

@@ -3,11 +3,12 @@
 > The contract between the frontends (`apps/desktop`, `apps/remote-dashboard`) and the brain
 > (`services/core-api`). Two transports: **REST `/api/*`** and **WebSocket `/ws/*`**.
 >
-> Status tags reflect the current v1.1.0 reality: core intelligence, providers, file
-> ingestion, memory, tasks, computer-use, voice, projects, research, a real
-> `/ws/status` fan-out bus, tools/agent approval, single-user auth, and a real
-> remote pairing → bearer-token flow are **implemented**. Remote WAN transport and
-> high-latency frame streaming remain **mocked/planned** (intentionally, per constraints).
+> Status tags reflect the current v1.2.0 reality: core intelligence, providers, file
+> ingestion, memory, tasks, execution plans, agentic tools, continuous vision, audio
+> context, self-evolving persona, voice, projects, research, a real `/ws/status`
+> fan-out bus, tools/plan approval, single-user auth, and a real remote pairing →
+> bearer-token flow are **implemented**. Remote WAN transport and high-latency frame
+> streaming remain **mocked/planned** (intentionally, per constraints).
 >
 > Related: [System Overview](system-overview.md) · [Data Model](data-model.md) · [Feature Matrix](../feature-matrix.md)
 
@@ -112,7 +113,22 @@ REST + `/ws/remote` WebSocket auth.
 | PUT | `/api/settings/{key}` | `{value}` | updated `Setting` | implemented |
 | POST | `/api/settings/computer-use/arm` | — | `{detail: "armed"}` | implemented |
 | POST | `/api/settings/computer-use/disarm` | — | `{detail: "disarmed"}` | implemented |
+| GET | `/api/settings/computer-use` | — | `ComputerUseSettings` (trust_level, max_steps, timeout, vision/audio/double_verify/browser toggles) | implemented |
+| PUT | `/api/settings/computer-use` | `ComputerUseSettings` | updated `ComputerUseSettings` | implemented |
 | GET | `/api/settings/computer-use/audit` | — | list of audit logs | implemented |
+
+### Plans — `/api/plans` · `routers/plans.py`
+| Method | Path | Request | Response | Status |
+|---|---|---|---|---|
+| POST | `/api/plans` | `{goal, parallel?, trust_level?, steps?}` | created `TaskPlan` | implemented |
+| GET | `/api/plans` | — | list of `TaskPlan` for current user | implemented |
+| GET | `/api/plans/{id}` | — | `PlanDetail` (plan + steps) | implemented |
+| POST | `/api/plans/{id}/cancel` | — | updated `TaskPlan` (`cancelled`) | implemented |
+| POST | `/api/plans/{id}/steps/{step_id}/approve` | — | `{detail: "approved"}` | implemented |
+| POST | `/api/plans/{id}/steps/{step_id}/retry` | — | updated `PlanStep` (retried) | implemented |
+| POST | `/api/plans/{id}/subplans` | `{parent_step_id, goal, trust_level?}` | created child `TaskPlan` | implemented |
+
+> Plans are decomposed by `PlannerService` into atomic steps, executed by `ExecutorService` with approval, replan, and parallel-batch support. WS events (`plan_created`, `plan_started`, `step_started`, `step_completed`, `step_failed`, `step_approval_needed`, `plan_completed`, `plan_failed`, `plan_cancelled`, `subplan_created`, `verification_attached`) fan out over `/ws/status`.
 
 ### Tools — `/api/tools` · `routers/tools.py`
 | Method | Path | Request | Response | Status |
@@ -121,7 +137,7 @@ REST + `/ws/remote` WebSocket auth.
 | POST | `/api/tools/approve` | `{tool_call_id}` | `{detail: "approved"}` | implemented |
 | POST | `/api/tools/reject` | `{tool_call_id}` | `{detail: "rejected"}` | implemented |
 
-> Tools with `requires_approval=True` (e.g. `computer_use`) pause the ReAct loop and broadcast a `tool_approval` event over `/ws/status` before executing. The frontend or dashboard can then `POST /api/tools/approve` or `/reject`.
+> The tool registry includes unrestricted agentic tools: `shell` (list-of-args, no shell=True), `fs_write`/`fs_read`/`fs_list`/`fs_delete` (with undo log), `browser` (Playwright, gated by `COMPUTER_USE_BROWSER_ENABLED`), `install`, `process`, `service`, `clipboard`, `notify`, `git`, `docker`. Tools with `requires_approval=True` pause the ReAct loop (chat) or executor (plans) and broadcast a `tool_approval` or `step_approval_needed` event over `/ws/status`.
 
 ### Audio — `/api/audio` · `routers/audio.py`
 | Method | Path | Request | Response | Status |
@@ -165,7 +181,7 @@ All WS messages are JSON envelopes: `{ "type": "...", ... }`.
 - **Status:** implemented (full agent tool-calling loop).
 
 ### `/ws/status` · `ws/status.py` — live status bus
-- **Server → client:** `{type:"heartbeat", ts}` · `{type:"provider", state}` · `{type:"task", id, status}` · `{type:"device", id, state}` · `{type:"research", id, status}` · `{type:"tool_approval", ...}` · `{type:"presence", state}` (idle/listening/thinking/speaking/error)
+- **Server → client:** `{type:"heartbeat", ts}` · `{type:"provider", state}` · `{type:"task", id, status}` · `{type:"device", id, state}` · `{type:"research", id, status}` · `{type:"tool_approval", ...}` · `{type:"plan_created", plan_id, goal, parallel, trust_level}` · `{type:"plan_started", plan_id}` · `{type:"plan_completed", plan_id, step_count}` · `{type:"plan_failed", plan_id, error}` · `{type:"plan_cancelled", plan_id, reason?}` · `{type:"step_started", plan_id, step_id, action?, replan?}` · `{type:"step_completed", plan_id, step_id}` · `{type:"step_failed", plan_id, step_id, error}` · `{type:"step_approval_needed", plan_id, step_id, action}` · `{type:"subplan_created", plan_id, sub_plan_id, parent_step_id}` · `{type:"verification_attached", plan_id, after_action, description}` · `{type:"presence", state}` (idle/listening/thinking/speaking/error)
 - Feeds the desktop status bar / presence-orb state and the dashboard.
 - **Status:** implemented (real event fan-out: task due, research, tool_approval, provider reachability, presence-orb state). Heartbeat is still emitted every 5s.
 
@@ -184,7 +200,7 @@ All WS messages are JSON envelopes: `{ "type": "...", ... }`.
 
 | Bucket | Endpoints |
 |---|---|
-| **Real** | `/api/health`, session/message/memory/task/file/setting **persistence**, `/ws/chat` streaming, `/api/providers` (+ `/status` + `/ping`), `/api/persona`, memory `search`, `/api/settings/computer-use/*`, `/api/tools` (approve/reject), `/api/files/search`, `/api/audio` (transcribe/synthesize), `/api/projects`, `/api/research`, real single-user `auth`, `/ws/status` event fan-out, `/api/remote` (/devices, /pair, /pairing-code, /wake, /sleep, /unpair, /presence, /sessions), `/ws/remote` command relay + frame execution |
+| **Real** | `/api/health`, session/message/memory/task/file/setting **persistence**, `/ws/chat` streaming, `/api/providers` (+ `/status` + `/ping`), `/api/persona`, memory `search`, `/api/settings/computer-use/*`, `/api/plans` (CRUD + step approve/retry/subplans), `/api/tools` (approve/reject), `/api/files/search`, `/api/audio` (transcribe/synthesize), `/api/projects`, `/api/research`, real single-user `auth`, `/ws/status` event fan-out (plan/task/research/tool_approval/presence), `/api/remote` (/devices, /pair, /pairing-code, /wake, /sleep, /unpair, /presence, /sessions), `/ws/remote` command relay + frame execution |
 | **Mock (wired, canned/echo)** | — |
 | **Planned (interface/TODO only)** | real WAN remote transport, high-latency `/ws/remote` frame streaming |
 

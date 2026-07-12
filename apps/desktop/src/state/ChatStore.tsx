@@ -8,11 +8,15 @@ import {
   type ReactNode,
 } from "react";
 import type { ApiMessage, ChatMessage, Role } from "@/lib/types";
-import { mockMessages, uid } from "@/lib/mockData";
 import { streamChat } from "@/lib/ws";
 import { api } from "@/lib/api";
 import { usePersona } from "@/state/PersonaStore";
 import { usePresence } from "@/state/PresenceStore";
+
+/** Local id helper for optimistic messages (no backend round-trip). */
+function uid(prefix = "id"): string {
+  return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+}
 
 interface ChatState {
   messages: ChatMessage[];
@@ -85,7 +89,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const { backendMode } = usePersona();
   const { setPresence } = usePresence();
   const [state, dispatch] = useReducer(reducer, {
-    messages: mockMessages,
+    messages: [],
     sessionId: null,
   });
 
@@ -96,7 +100,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   personaRef.current = backendMode;
 
   // On mount, try to create a real session and load any history. On failure the
-  // mock greeting from `mockMessages` stays in place (offline-friendly).
+  // message list simply stays empty (honest offline state, no mock greeting).
   useEffect(() => {
     let cancelled = false;
     void (async () => {

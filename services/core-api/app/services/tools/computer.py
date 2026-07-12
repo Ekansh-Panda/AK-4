@@ -1,4 +1,7 @@
-"""Computer-use tool wrapper."""
+"""Computer-use tool wrapper.
+
+Delegates to the hardened computer_use service.
+"""
 
 from __future__ import annotations
 
@@ -11,7 +14,8 @@ class ComputerUseTool(Tool):
 
     name = "computer_use"
     description = (
-        "Take actions on the local machine: screenshot, click, type, keypress, shell. "
+        "Take actions on the local machine: screenshot, click, type, keypress, scroll. "
+        "For shell commands, use the dedicated 'shell' tool instead. "
         "Will fail if disarmed by the user."
     )
     requires_approval = True
@@ -20,14 +24,15 @@ class ComputerUseTool(Tool):
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["screenshot", "click", "type", "keypress", "shell"],
-                "description": "The action to perform.",
+                "enum": ["screenshot", "click", "type", "keypress", "scroll"],
+                "description": "The desktop action to perform.",
             },
             "x": {"type": "integer", "description": "X coordinate for click."},
             "y": {"type": "integer", "description": "Y coordinate for click."},
             "text": {"type": "string", "description": "Text to type."},
             "key": {"type": "string", "description": "Key to press."},
-            "command": {"type": "string", "description": "Shell command to run (if shell)."},
+            "clicks": {"type": "integer", "description": "Scroll clicks (default 3)."},
+            "direction": {"type": "string", "description": "Scroll direction: up or down (default down)."},
         },
         "required": ["action"],
     }
