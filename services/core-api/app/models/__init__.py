@@ -5,6 +5,7 @@ from app.models.file import FileRecord
 from app.models.file_chunk import FileChunk
 from app.models.memory import Memory
 from app.models.message import Message
+from app.models.plan import PlanStep, TaskPlan
 from app.models.project import Project
 from app.models.research import Research
 from app.models.session import ChatSession
@@ -19,10 +20,12 @@ __all__ = [
     "FileRecord",
     "Memory",
     "Message",
+    "PlanStep",
     "Project",
     "Research",
     "Setting",
     "Task",
+    "TaskPlan",
     "User",
 ]
 

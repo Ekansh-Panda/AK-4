@@ -13,3 +13,10 @@ numpy>=1.26
 
 # Background task scheduler (SCHEDULER_ENABLED=true)
 APScheduler==3.10.4
+
+# Continuous vision engine fallbacks (Module 6).
+# pytesseract: OCR used only when Moondream structured confidence < 0.7.
+#   Also requires the system `tesseract` binary to be installed.
+# mss: lightweight cross-platform screenshot backend (alternative to pyautogui).
+pytesseract>=0.3.10
+mss>=9.0.1

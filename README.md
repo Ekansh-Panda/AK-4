@@ -8,7 +8,7 @@
 ![FastAPI](https://img.shields.io/badge/API-FastAPI%20%2B%20Uvicorn-009688)
 ![Tauri%20v2](https://img.shields.io/badge/desktop-Tauri%20v2-FFC131)
 ![React](https://img.shields.io/badge/frontend-React%20%2B%20TS-61DAFB)
-![v1.1.0](https://img.shields.io/badge/version-1.1.0-brightgreen)
+![v1.2.0](https://img.shields.io/badge/version-1.2.0-brightgreen)
 
 **A cross-platform personal AI companion — desktop, remote, and always present.**
 
@@ -20,7 +20,7 @@
 
 Miori Core is the foundation of **Miori** — a personal AI you live alongside: a desktop companion you talk to, a workspace you think in, and a remote presence you reach from your phone. Built as a clean, modular monorepo with a real, wired-up spine. The deeper intelligence (semantic memory, computer-use, voice, multi-agent) lands behind clean interfaces and feature flags — not as fluff, but as lazy-loaded, opt-in capability.
 
-> **Status:** v1.1.0 — Production scaffold. The desktop app, remote dashboard, and FastAPI backend are wired over REST + WebSocket with **real model providers** (OpenAI, Gemini, Groq, Mistral, SambaNova, OpenRouter, HuggingFace, Cohere, Cloudflare + LiteLLM orchestrator), **SQLite persistence**, **file text ingestion**, **streaming chat**, **ReAct agent loop with human approval**, **background research**, **projects**, **tasks**, **audio STT/TTS**, and **device remote control**. Booting fully offline with the **mock provider** requires zero API keys. Runs in **lite mode** by default so it stays usable on low-end machines.
+> **Status:** v1.2.0 — Full computer control. The desktop app, remote dashboard, and FastAPI backend are wired over REST + WebSocket with **real model providers** (OpenAI, Gemini, Groq, Mistral, SambaNova, OpenRouter, HuggingFace, Cohere, Cloudflare + LiteLLM orchestrator with 429-aware retry), **SQLite persistence**, **file text ingestion**, **streaming chat**, **ReAct agent loop with human approval**, **execution plans** with planner/executor, **unrestricted agentic tools** (shell, filesystem, browser, system), **continuous vision** (moondream + pytesseract), **audio context**, **self-evolving persona**, **background research**, **projects**, **tasks**, and **device remote control**. Frontends render honest empty states when the backend is unreachable. Runs in **lite mode** by default so it stays usable on low-end machines.
 
 ---
 
@@ -46,7 +46,14 @@ Miori Core is the foundation of **Miori** — a personal AI you live alongside: 
 ### Agent & Tools
 - **ReAct loop**: tool-calling agent with streaming responses
 - **Human approval** for dangerous tools (`requires_approval=True`) — paused via `/ws/status` `tool_approval` event, resolved through `POST /api/tools/approve` or `/reject`
-- **Computer-use** (opt-in P2): screenshot, click, type, shell — gated behind `COMPUTER_USE_ENABLED` + `COMPUTER_USE_SHELL_ENABLED`
+- **Execution plans**: decompose goals into executable steps; parallel sub-plans; step-level approval; replan on failure; double-verification for critical actions
+- **Unrestricted agentic tools**:
+  - `shell`: execute commands as `list[str]` (no `shell=True`)
+  - `fs_write`, `fs_read`, `fs_list`, `fs_delete` with in-memory undo log
+  - `browser`: Playwright persistent context (goto, click, type, scroll, screenshot, pdf, evaluate)
+  - `install`, `process`, `service`, `clipboard`, `notify`, `git`, `docker`
+- **Computer-use** (unrestricted, trust-gated): screenshot, click, type, keypress, scroll — pyautogui is a hard dependency when enabled
+- **Trust levels**: `manual`, `auto-shell`, `trusted`, `god` — control approval speed, not capability
 - **Arm/disarm audit log**: explicit `arm` / `disarm` endpoints with full audit trail
 
 ### Research Agent
@@ -71,27 +78,45 @@ Miori Core is the foundation of **Miori** — a personal AI you live alongside: 
 - Desktop push-to-talk: `MediaRecorder` → `POST /api/audio/transcribe`
 
 ### Remote Control
-- **Device pairing** with bearer auth and hash-based secrets (planned)
+- **Device pairing** with bearer auth and hash-based secrets
 - **Wake / sleep** commands for paired devices
 - **Presence** state: `online` / `offline` / `sleeping`
 - **WebSocket relay** for real-time remote presence and control frames
 
 ### Multi-Provider
-- **9 providers** out of the box: OpenAI, Gemini, Groq, Mistral, SambaNova, OpenRouter, HuggingFace, Cohere, Cloudflare Workers AI
+- **10 providers** out of the box: Mock, OpenAI, Gemini, Groq, Mistral, SambaNova, OpenRouter, HuggingFace, Cohere, Cloudflare Workers AI
 - **LiteLLM orchestrator** with cross-provider failover (opt-in via `ORCHESTRATOR_ENABLED`)
+- **429-aware retry** with exponential backoff and silent fallback across providers (applies to both REST and WS paths)
 - Lazy-import per provider — no heavy SDK cost at boot
 - Transparent fallback to `mock` when a configured provider is unreachable
 
 ### Frontends
 - **Tauri desktop** (v2): native window shell, tabbed workspace, presence orb — runs on Windows, Linux, macOS
 - **React remote dashboard**: mobile-first browser app reachable from your phone on the LAN
-- **Offline-capable mock data**: both frontends are usable without the backend running
+- **Honest empty states**: frontends show "not connected / auth required" instead of mock data when the backend is unreachable
 
 ### Observability
 - **Structured logging** throughout the backend
 - **Health endpoint** (`GET /api/health`) with version, lite mode flag, and remote enabled flag
 - **Provider ping** (`GET /api/providers/ping`) with ~60s TTL reachability cache
-- Live **WebSocket status bus** (`/ws/status`) fanning out heartbeat, provider state, task events, research status, tool approvals, and presence-orb state
+- Live **WebSocket status bus** (`/ws/status`) fanning out heartbeat, provider state, task events, research status, tool approvals, plan lifecycle events, and presence-orb state
+
+### Continuous Vision
+- **Moondream** local screen understanding (CPU-friendly, runs on-device)
+- **pytesseract OCR** fallback when Moondream confidence is low
+- Continuous 2s capture cadence during plan execution
+- Optional cloud vision LLM escalation (gpt-4o / gemini-1.5-pro) for complex UI understanding
+
+### Audio Context
+- **Rolling 5s mic buffer** in memory (never persisted unless saved)
+- **System audio** loopback capture where available
+- **Keyword wake** always-listening for "miori" (Porcupine/Whisper)
+- **OS notification** forwarding to `/ws/status`
+
+### Self-Evolving Persona
+- Distills user preferences, corrections, and style signals every 10 turns or 24 hours
+- Stores compact `persona:evolution` memory block
+- Appends learned preferences to the next system prompt automatically
 
 ---
 
@@ -107,12 +132,12 @@ Miori Core is a **clean modular monorepo** — not a merge of donor repos. All i
 │  routers/  →  services/  →  models/  →  db (SQLite)         │
 │    chat       memory       user                                │
 │    memory     providers    session                             │
-│    files      persona      message                            │
-│    providers  tools        memory                             │
-│    persona    remote       file                               │
-│    remote     tasks        task                               │
-│    tasks      files        device                             │
-│    settings              project                              │
+│    plans      persona      message                            │
+│    providers  planner      memory                             │
+│    persona    executor     file                               │
+│    remote     tools        task                               │
+│    tasks      vision       device                             │
+│    settings   audio        project                            │
 │                          research                             │
 └─────────────────────────────────────────────────────────────┘
          ▲                              ▲
@@ -222,7 +247,7 @@ Miori reads config from `.env` files. The backend `Settings` class reads **bare,
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `APP_NAME` | `Miori Core` | Display name |
-| `APP_VERSION` | `1.1.0` | Reported version |
+| `APP_VERSION` | `1.2.0` | Reported version |
 | `HOST` | `127.0.0.1` | API bind address |
 | `PORT` | `8000` | API port |
 | `DATABASE_URL` | `sqlite:///./miori.db` | SQLAlchemy URL (SQLite default) |
@@ -262,8 +287,15 @@ Miori reads config from `.env` files. The backend `Settings` class reads **bare,
 | --- | --- | --- |
 | `LITE_MODE` | `true` | Disables vector DB, heavy embeddings, and remote pairing. Uses raw SQLite text search. |
 | `REMOTE_ENABLED` | `true` | Exposes dashboard and pairing routes to the LAN |
-| `COMPUTER_USE_ENABLED` | `false` | Allows LLM to take screenshots and control input |
-| `COMPUTER_USE_SHELL_ENABLED` | `false` | Allows computer-use shell command execution |
+| `COMPUTER_USE_ENABLED` | `false` | Allows full computer control when armed |
+| `COMPUTER_USE_SHELL_ENABLED` | `false` | Allows shell command execution |
+| `COMPUTER_USE_TRUST_LEVEL` | `manual` | Approval speed: `manual`, `auto-shell`, `trusted`, `god` |
+| `COMPUTER_USE_MAX_STEPS` | `50` | Max steps per execution plan |
+| `COMPUTER_USE_PLAN_TIMEOUT_S` | `600` | Plan timeout in seconds |
+| `COMPUTER_USE_VISION_ENABLED` | `true` | Moondream continuous vision (on by default when computer-use is enabled) |
+| `COMPUTER_USE_AUDIO_ENABLED` | `false` | Mic/system audio + keyword wake |
+| `COMPUTER_USE_DOUBLE_VERIFY` | `true` | Secondary-model verification for critical actions |
+| `COMPUTER_USE_BROWSER_ENABLED` | `false` | Playwright browser automation |
 | `SEMANTIC_MEMORY_ENABLED` | `false` | Enables embedding + ChromaDB vector search for memory |
 | `SCHEDULER_ENABLED` | `true` | Spins up APScheduler background task system |
 | `MIORI_API_TOKEN` | _(empty)_ | When set, enforces Bearer token auth on REST API |
@@ -280,17 +312,30 @@ Miori reads config from `.env` files. The backend `Settings` class reads **bare,
 - **Optional bearer token**: set `MIORI_API_TOKEN` in `services/core-api/.env` to enforce `Authorization: Bearer <token>` on all REST endpoints. When unset, the API is open and returns a DEV user.
 - **Device pairing**: future WAN remote control uses hash-based pairing secrets (Mark-XLVI patterns). Current pairing is mocked in `services/core-api/app/models/device.py`.
 
+### Trust Levels
+
+Computer-use capability is unrestricted once enabled. Trust levels control **approval speed**, not capability:
+
+| Level | Auto-approves | Prompts user for |
+| --- | --- | --- |
+| `manual` | nothing | every tool call |
+| `auto-shell` | shell, fs_write, fs_read, fs_list, screenshot, type, keypress | install, browser, process_kill, service, delete |
+| `trusted` | everything except `cmd /c` or `powershell` on Windows | rare high-risk escalations |
+| `god` | everything, no prompts | nothing |
+
+Default: `manual`. Configurable per device.
+
 ### Computer-Use Safety
 
 - `COMPUTER_USE_ENABLED` defaults to `false`. It must be explicitly turned on.
-- `COMPUTER_USE_SHELL_ENABLED` defaults to `false`. Shell execution requires both flags.
 - **Arm/disarm endpoints**: `POST /api/settings/computer-use/arm` and `/disarm` require explicit user action.
-- **Audit log**: every arm, disarm, and tool invocation is logged via `GET /api/settings/computer-use/audit`.
-- **Approval gate**: tools with `requires_approval=True` pause the ReAct loop and broadcast a `tool_approval` event over `/ws/status`. The frontend must `POST /api/tools/approve` before execution proceeds.
+- **Audit log**: every arm, disarm, and tool invocation is append-only logged at `data/computer_use_audit.log` and readable via `GET /api/settings/computer-use/audit`.
+- **Undo log**: `fs_delete` records deleted content in an in-memory ring buffer (last 100 deletions) for recovery.
+- **Approval gate**: tools with `requires_approval=True` pause execution and broadcast a `tool_approval` (chat) or `step_approval_needed` (plans) event over `/ws/status`. The frontend must `POST /api/tools/approve` or `POST /api/plans/{id}/steps/{step_id}/approve` before execution proceeds.
 
 ### Sandbox Notes
 
-Computer-use and shell tools are designed for local, single-user environments. WAN exposure without proper sandboxing (containers, VMs, restricted OS accounts) is **not recommended** and is out of scope for v1.
+No sandbox is enforced. Computer-use and shell tools run with the same privileges as the logged-in user. The security model is **observe everything, enable instant abort, reversible where possible**. WAN exposure without proper network controls is **not recommended**.
 
 ---
 
@@ -301,6 +346,10 @@ Computer-use and shell tools are designed for local, single-user environments. W
 cd services/core-api
 source .venv/bin/activate
 pytest
+
+# Backend — plan tests only
+cd services/core-api
+MIORI_SKIP_DEV=1 python -m pytest tests/test_plans.py -q
 
 # Frontend lint
 pnpm lint

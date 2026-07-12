@@ -14,8 +14,7 @@ import type {
   ConnectionStatus,
   ContextSnapshot,
 } from "@/lib/types";
-import { api } from "@/lib/api";
-import { mockContext } from "@/lib/mockData";
+import { api, EMPTY_CONTEXT } from "@/lib/api";
 
 interface ConnectionContextValue {
   status: ConnectionStatus;
@@ -38,7 +37,7 @@ const POLL_DOWN_MS = 30_000;
 
 export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
-  const [context, setContext] = useState<ContextSnapshot>(mockContext);
+  const [context, setContext] = useState<ContextSnapshot>(EMPTY_CONTEXT);
   const [health, setHealth] = useState<ApiHealth | null>(null);
   const [providers, setProviders] = useState<ApiProviderStatus[]>([]);
 
@@ -52,7 +51,6 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       const h = await api.getHealth();
       setHealth(h);
       const online = h !== null;
-      setStatus(online ? "connected" : "offline");
 
       // Only fan out the heavier reads when the server is actually up; this
       // avoids 3 timeouts per cycle while offline (no tight loops).
@@ -63,9 +61,18 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         ]);
         setProviders(statuses.ok ? statuses.data : []);
         setContext(ctx);
+        // Server is up but a scoped call needs auth / a dependency is down:
+        // surface a "degraded" state instead of a green "connected" light.
+        const degraded =
+          statuses.authRequired ||
+          statuses.unavailable ||
+          statuses.status === 401 ||
+          statuses.status === 503;
+        setStatus(degraded ? "degraded" : "connected");
       } else {
         setProviders([]);
-        setContext(mockContext);
+        setContext(EMPTY_CONTEXT);
+        setStatus("offline");
       }
 
       // Schedule the next poll with a politeness-aware interval.

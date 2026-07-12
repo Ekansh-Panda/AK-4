@@ -6,9 +6,9 @@ Off by default. Must be explicitly armed per session.
 
 from __future__ import annotations
 
+import datetime
 import json
 import os
-import shlex
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,7 +24,6 @@ logger = get_logger(__name__)
 _armed = False
 
 AUDIT_LOG_PATH = Path("data/computer_use_audit.log")
-RESTRICTED_DIR = Path("data/computer_use_workspace").resolve()
 
 
 class AuditEntry(BaseModel):
@@ -78,48 +77,54 @@ def get_audit_log(limit: int = 20) -> list[AuditEntry]:
     return entries
 
 
-def execute_shell(command: str) -> str:
-    """Safely execute a shell command in a restricted directory."""
+def execute_shell(command: list[str]) -> dict:
+    """Execute a shell command as list-of-args without shell=True.
+
+    Runs with cwd=None (current working directory) by default.
+    Capture and return full stdout/stderr.
+    """
     if not settings.COMPUTER_USE_SHELL_ENABLED:
         raise PermissionError("Shell execution is disabled in config.")
-    
-    RESTRICTED_DIR.mkdir(parents=True, exist_ok=True)
-    
+
+    if not command or not isinstance(command, list):
+        raise ValueError("command must be a non-empty list of strings")
+
     try:
-        # We allow subprocess but run it with cwd=RESTRICTED_DIR.
-        # This is not a strong sandbox, but meets the phase requirement
-        # of running inside a restricted directory and logging literal command.
         result = subprocess.run(
             command,
-            shell=True,
-            cwd=RESTRICTED_DIR,
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=30,
+            cwd=None,
         )
-        out = result.stdout + (f"\n[stderr]\n{result.stderr}" if result.stderr else "")
-        return out.strip() or "Success"
+        return {
+            "command": command,
+            "return_code": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "elapsed_s": None,
+        }
+    except subprocess.TimeoutExpired:
+        return {"error": f"Command timed out after 30s", "command": command}
+    except FileNotFoundError:
+        return {"error": f"Command not found: {command[0]}", "command": command}
     except Exception as exc:
         raise RuntimeError(f"Shell failed: {exc}")
 
 
-def _mock_desktop_action(action: str, args: dict) -> str:
-    """Fallback if pyautogui is not installed (lite mode)."""
-    return f"Simulated desktop action: {action} with args {args}"
-
-
 def execute_desktop_action(action: str, args: dict) -> str:
-    """Execute screenshot, click, type, keypress using pyautogui."""
-    try:
-        import pyautogui  # lazy
-    except ImportError:
-        logger.warning("pyautogui not installed; mocking desktop action")
-        return _mock_desktop_action(action, args)
-    
+    """Execute screenshot, click, type, keypress using pyautogui.
+
+    pyautogui is a HARD dependency when COMPUTER_USE_ENABLED=true.
+    Raises ImportError immediately if pyautogui is not installed.
+    """
+    import pyautogui  # noqa: F401 — hard dependency, raised on ImportError
+
     try:
         if action == "screenshot":
-            path = RESTRICTED_DIR / f"screenshot_{int(datetime.now(timezone.utc).timestamp())}.png"
-            RESTRICTED_DIR.mkdir(parents=True, exist_ok=True)
+            timestamp = int(datetime.now(timezone.utc).timestamp())
+            path = Path(f"data/screenshot_{timestamp}.png")
+            path.parent.mkdir(parents=True, exist_ok=True)
             pyautogui.screenshot(str(path))
             return f"Screenshot saved to {path}"
         elif action == "click":
@@ -138,6 +143,12 @@ def execute_desktop_action(action: str, args: dict) -> str:
             key = args.get("key", "")
             pyautogui.press(key)
             return f"Pressed key: {key}"
+        elif action == "scroll":
+            clicks = args.get("clicks", 3)
+            direction = args.get("direction", "down")
+            delta = clicks if direction == "down" else -clicks
+            pyautogui.scroll(delta)
+            return f"Scrolled {delta} clicks"
         else:
             raise ValueError(f"Unknown desktop action: {action}")
     except Exception as exc:
@@ -149,12 +160,20 @@ def run_tool(action: str, args: dict) -> str:
     if not is_armed():
         log_audit_action(action, args, "Blocked", "Not armed")
         return "Error: Computer use is currently disarmed. Please arm it in settings."
-    
+
     outcome = ""
     error = None
     try:
         if action == "shell":
-            outcome = execute_shell(args.get("command", ""))
+            raw_cmd = args.get("command", "")
+            if isinstance(raw_cmd, list):
+                command = raw_cmd
+            elif isinstance(raw_cmd, str) and raw_cmd.strip():
+                raise ValueError("shell action requires command as a list-of-strings, not a raw string. Use the shell tool instead.")
+            else:
+                raise ValueError("shell action requires a non-empty command list")
+            result = execute_shell(command)
+            outcome = json.dumps(result)
         else:
             outcome = execute_desktop_action(action, args)
     except Exception as exc:
@@ -162,6 +181,11 @@ def run_tool(action: str, args: dict) -> str:
         outcome = "Failed"
         raise
     finally:
-        log_audit_action(action, args, outcome[:200] + ("..." if len(outcome) > 200 else outcome), error)
-        
+        log_audit_action(
+            action,
+            args,
+            outcome[:200] + ("..." if len(outcome) > 200 else outcome),
+            error,
+        )
+
     return outcome

@@ -1,6 +1,7 @@
 import type {
   ApiChatResponse,
   ApiChatSession,
+  ApiComputerUseSettings,
   ApiDevice,
   ApiFile,
   ApiFileDetail,
@@ -11,6 +12,10 @@ import type {
   ApiMessage,
   ApiModelInfo,
   ApiPersona,
+  ApiPlan,
+  ApiPlanCreate,
+  ApiPlanDetail,
+  ApiPlanStep,
   ApiProviderInfo,
   ApiProviderStatus,
   ApiProject,
@@ -19,6 +24,7 @@ import type {
   ApiRemoteSession,
   ApiResult,
   ApiSetting,
+  ApiSubPlanCreate,
   ApiTask,
   ApiTaskCreate,
   ApiTaskUpdate,
@@ -28,22 +34,17 @@ import type {
   ModelInfo,
   TaskItem,
 } from "./types";
-import {
-  mockContext,
-  mockFiles,
-  mockMemoryEntries,
-  mockModels,
-  mockTasks,
-} from "./mockData";
 
 /**
  * Typed fetch client for the Miori FastAPI backend
  * (services/core-api). Request/response shapes mirror app/schemas/*.py exactly.
  *
- * The backend stays OPTIONAL: every call falls back to mock data / empty
- * collections when the server is unreachable or returns a non-2xx, so the shell
- * never hard-crashes and remains usable offline. Set `VITE_MIORI_API` to
- * override the base URL (default http://localhost:8000/api).
+ * The backend stays OPTIONAL: every call returns a discriminated {@link ApiResult}
+ * whose `ok` flag tells callers whether the backend actually answered. On any
+ * network error, timeout, or non-2xx the result carries `ok: false`, the HTTP
+ * `status`, and a neutral empty `data` value (never mock data) so the shell
+ * renders honest "not connected" / empty states instead of fake content. Set
+ * `VITE_MIORI_API` to override the base URL (default http://localhost:8000/api).
  */
 const BASE =
   (import.meta.env.VITE_MIORI_API as string | undefined) ??
@@ -55,11 +56,27 @@ const ORIGIN = BASE.replace(/\/api\/?$/, "");
 /** Short timeout so offline mode falls back fast instead of hanging the UI. */
 const TIMEOUT_MS = 2500;
 
+/** Neutral empty right-panel context — shown when the backend is unreachable. */
+export const EMPTY_CONTEXT: ContextSnapshot = {
+  model: {
+    id: "",
+    label: "Not connected",
+    provider: "—",
+    contextTokens: 0,
+    local: false,
+  },
+  tools: [],
+  recentMemory: [],
+  devices: [],
+  persona: "warm",
+};
+
 /**
  * Core request with a discriminated result: `ok` tells callers whether the
- * backend actually answered (vs. the fallback being served), and `status`
- * surfaces HTTP codes like 413 (oversize upload). `fallback` is returned on any
- * network error, timeout, or non-2xx response.
+ * backend actually answered, and `status` surfaces HTTP codes like 401 (auth
+ * required), 413 (oversize upload) or 503 (dependency down). On any failure the
+ * `data` field holds the neutral empty `fallback` (never mock data) and `error`
+ * describes what went wrong.
  */
 async function requestResult<T>(
   path: string,
@@ -82,14 +99,25 @@ async function requestResult<T>(
       },
     });
     if (!res.ok) {
-      return { data: fallback, ok: false, status: res.status };
+      return {
+        data: fallback,
+        ok: false,
+        status: res.status,
+        error: res.statusText || `HTTP ${res.status}`,
+        authRequired: res.status === 401,
+        unavailable: res.status === 503,
+      };
     }
     // 204 / empty body tolerance.
     const text = await res.text();
     const data = (text ? JSON.parse(text) : fallback) as T;
     return { data, ok: true, status: res.status };
-  } catch {
-    return { data: fallback, ok: false };
+  } catch (err) {
+    return {
+      data: fallback,
+      ok: false,
+      error: err instanceof Error ? err.message : "network error",
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -125,7 +153,7 @@ function kindFromApiFile(f: ApiFile): FileItem["kind"] {
   return "other";
 }
 
-/** Map a backend file to the lightweight UI list item (used by mock fallback shape). */
+/** Map a backend file to the lightweight UI list item. */
 function fileItemFromApi(f: ApiFile): FileItem {
   return {
     id: f.id,
@@ -364,6 +392,60 @@ export const api = {
   getComputerUseAudit: () =>
     requestResult<any[]>("/settings/computer-use/audit", []),
 
+  /** GET /settings/computer-use — current computer-use configuration. */
+  getComputerUseSettings: () =>
+    requestResult<ApiComputerUseSettings | null>("/settings/computer-use", null),
+
+  /** PUT /settings/computer-use — persist the computer-use configuration. */
+  updateComputerUseSettings: (body: ApiComputerUseSettings) =>
+    requestResult<ApiComputerUseSettings | null>("/settings/computer-use", null, {
+      method: "PUT",
+      ...json(body),
+    }),
+
+  /* --- Plans (computer-control execution plans) --- */
+
+  /** GET /plans — all plans for the current user (newest first). */
+  listPlans: () => requestResult<ApiPlan[]>("/plans", []),
+
+  /** GET /plans/{id} — plan detail incl. steps. */
+  getPlan: (id: string) =>
+    requestResult<ApiPlanDetail | null>(`/plans/${encodeURIComponent(id)}`, null),
+
+  /** POST /plans — create a new plan (optionally with steps). */
+  createPlan: (body: ApiPlanCreate) =>
+    requestResult<ApiPlan | null>("/plans", null, { method: "POST", ...json(body) }),
+
+  /** POST /plans/{id}/cancel — cancel a plan. */
+  cancelPlan: (id: string) =>
+    requestResult<ApiPlan | null>(`/plans/${encodeURIComponent(id)}/cancel`, null, {
+      method: "POST",
+    }),
+
+  /** POST /plans/{id}/steps/{stepId}/approve — approve a pending step. */
+  approvePlanStep: (planId: string, stepId: string) =>
+    requestResult<{ detail: string } | null>(
+      `/plans/${encodeURIComponent(planId)}/steps/${encodeURIComponent(stepId)}/approve`,
+      null,
+      { method: "POST" },
+    ),
+
+  /** POST /plans/{id}/steps/{stepId}/retry — retry a failed/rejected step. */
+  retryPlanStep: (planId: string, stepId: string) =>
+    requestResult<ApiPlanStep | null>(
+      `/plans/${encodeURIComponent(planId)}/steps/${encodeURIComponent(stepId)}/retry`,
+      null,
+      { method: "POST" },
+    ),
+
+  /** POST /plans/{id}/subplans — spawn a sub-plan from a parent step. */
+  createSubPlan: (planId: string, body: ApiSubPlanCreate) =>
+    requestResult<ApiPlan | null>(
+      `/plans/${encodeURIComponent(planId)}/subplans`,
+      null,
+      { method: "POST", ...json(body) },
+    ),
+
   /* --- Projects --------------------------------------------------------- */
 
   /** GET /projects */
@@ -422,8 +504,9 @@ export const api = {
 
   /**
    * Aggregate context for the right panel. There is no single backend endpoint,
-   * so this is composed client-side from providers + memory + devices, with a
-   * full fallback to `mockContext` when the backend is down.
+   * so this is composed client-side from providers + memory + devices. When the
+   * backend is fully unreachable this returns a neutral EMPTY_CONTEXT (no mock
+   * data) so the UI shows honest "not connected" states.
    */
   async getContext(): Promise<ContextSnapshot> {
     const [providers, memory, devices] = await Promise.all([
@@ -431,18 +514,18 @@ export const api = {
       this.listMemory({ limit: 5 }),
       this.listDevices(),
     ]);
-    if (!providers.ok && !memory.ok && !devices.ok) return mockContext;
+    if (!providers.ok && !memory.ok && !devices.ok) return EMPTY_CONTEXT;
 
     const active =
       providers.data.find((p) => p.active) ?? providers.data[0];
     const activeModel = active?.models[0];
     const model: ModelInfo = activeModel
       ? modelFromApi(activeModel)
-      : mockContext.model;
+      : EMPTY_CONTEXT.model;
 
     return {
       model,
-      tools: mockContext.tools, // no backend tools endpoint yet
+      tools: [], // no backend tools endpoint yet
       recentMemory: memory.ok
         ? memory.data.map((m) => ({
             id: m.id,
@@ -451,7 +534,7 @@ export const api = {
             score: m.pinned ? 1 : 0.6,
             recalledAt: Date.parse(m.updated_at) || Date.now(),
           }))
-        : mockContext.recentMemory,
+        : [],
       devices: devices.ok
         ? devices.data.map((d) => ({
             id: d.id,
@@ -466,33 +549,33 @@ export const api = {
             online: d.state === "online",
             lastSeen: d.last_seen_at ? Date.parse(d.last_seen_at) : Date.now(),
           }))
-        : mockContext.devices,
-      persona: mockContext.persona,
+        : [],
+      persona: EMPTY_CONTEXT.persona,
     };
   },
 
-  /** Models mapped to the UI ModelInfo shape (used by Settings + RightPanel). */
+  /** Models mapped to the UI ModelInfo shape (empty when the backend is down). */
   async getModels(): Promise<ModelInfo[]> {
     const r = await this.listProviderModels();
-    return r.ok && r.data.length ? r.data.map(modelFromApi) : mockModels;
+    return r.ok ? r.data.map(modelFromApi) : [];
   },
 
-  /** Files mapped to the UI FileItem shape (fallback to mocks if down). */
+  /** Files mapped to the UI FileItem shape (empty when the backend is down). */
   async getFiles(): Promise<FileItem[]> {
     const r = await this.listFiles();
-    return r.ok ? r.data.map(fileItemFromApi) : mockFiles;
+    return r.ok ? r.data.map(fileItemFromApi) : [];
   },
 
-  /** Tasks mapped to the UI TaskItem shape. */
+  /** Tasks mapped to the UI TaskItem shape (empty when the backend is down). */
   async getTasks(): Promise<TaskItem[]> {
     const r = await this.listTasks();
-    return r.ok ? r.data.map(taskItemFromApi) : mockTasks;
+    return r.ok ? r.data.map(taskItemFromApi) : [];
   },
 
-  /** Memory mapped to the UI MemoryEntry shape. */
+  /** Memory mapped to the UI MemoryEntry shape (empty when the backend is down). */
   async getMemory(): Promise<MemoryEntry[]> {
     const r = await this.listMemory({ limit: 100 });
-    return r.ok ? r.data.map(memoryEntryFromApi) : mockMemoryEntries;
+    return r.ok ? r.data.map(memoryEntryFromApi) : [];
   },
 
   /* --- Health ----------------------------------------------------------- */

@@ -4,7 +4,6 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { api, memoryEntryFromApi } from "@/lib/api";
-import { mockMemoryEntries } from "@/lib/mockData";
 import { cn } from "@/lib/cn";
 import type { ApiMemory } from "@/lib/types";
 
@@ -29,20 +28,8 @@ export function MemoryView() {
     if (r.ok) {
       setItems(r.data);
     } else {
-      // Fallback: synthesize ApiMemory-ish rows from the mock entries so the
-      // view stays populated offline (read-only mutations will just no-op).
-      setItems(
-        mockMemoryEntries.map((e) => ({
-          id: e.id,
-          created_at: new Date(e.updatedAt).toISOString(),
-          updated_at: new Date(e.updatedAt).toISOString(),
-          user_id: null,
-          namespace: e.tags[0] ?? "default",
-          content: `${e.title}\n${e.body}`,
-          meta: null,
-          pinned: e.pinned,
-        })),
-      );
+      // Backend unreachable — show an honest empty state (no mock data).
+      setItems([]);
     }
   }, [kind, pinnedOnly]);
 
@@ -143,7 +130,7 @@ export function MemoryView() {
 
       {offline && (
         <p className="mb-4 text-xs text-ink-faint">
-          Backend unreachable — showing a local fallback (changes won't persist).
+          Backend unreachable — connect the server to load and edit memory.
         </p>
       )}
 

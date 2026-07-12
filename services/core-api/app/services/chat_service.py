@@ -109,6 +109,15 @@ class ChatService:
             return persona_mode
         return PersonaService.normalize_mode(session.persona_mode)
 
+    async def _get_evolution_block(self, user_id: str | None, session_id: str) -> str | None:
+        """Best-effort persona evolution block for this turn."""
+        try:
+            from app.services.persona.evolution import PersonaEvolutionService
+            return await PersonaEvolutionService().evolve(user_id, session_id, self._db)
+        except Exception as exc:  # noqa: BLE001 - never break a chat turn
+            logger.debug("evolution skipped: %s", exc)
+            return None
+
     # --- turns ---
     def _get_orchestrator(self) -> OrchestratingProvider:
         if not hasattr(self, "_orchestrator"):
@@ -139,8 +148,9 @@ class ChatService:
         self._persist(session.id, "user", user_text)
         provider, using_orchestrator = self._select_provider(model=model)
         msgs = self._build_provider_messages(session.id)
+        evolution_block = await self._get_evolution_block(user_id, session.id)
         system_prompt = self._persona.build_prompt(
-            mode, context=await self._recall_context(user_text, user_id)
+            mode, context=await self._recall_context(user_text, user_id), evolution=evolution_block
         )
         try:
             import json
@@ -151,7 +161,7 @@ class ChatService:
             tool_schemas = tool_registry.schemas() if agent_mode else []
             
             while True:
-                reply_or_msg = await provider.chat(
+                reply_or_msg = await self._providers.chat_with_fallback(
                     msgs, model=model, system_prompt=system_prompt, tools=tool_schemas
                 )
                 
@@ -217,7 +227,7 @@ class ChatService:
             reply = self._persist(session.id, "assistant", reply_text, model=provider.name)
             return session, reply
         
-        served_model = provider.name
+        served_model = self._providers.last_fallback_provider or provider.name
         if using_orchestrator:
             orch = self._get_orchestrator()
             ls = orch.last_served()
@@ -259,8 +269,9 @@ class ChatService:
 
         provider, using_orchestrator = self._select_provider(model=model)
         msgs = self._build_provider_messages(session.id)
+        evolution_block = await self._get_evolution_block(user_id, session.id)
         system_prompt = self._persona.build_prompt(
-            mode, context=await self._recall_context(user_text, user_id)
+            mode, context=await self._recall_context(user_text, user_id), evolution=evolution_block
         )
         chunks: list[str] = []
         try:
@@ -273,7 +284,7 @@ class ChatService:
             
             while True:
                 tool_call_occurred = False
-                async for chunk in provider.stream(
+                async for chunk in self._providers.stream_with_fallback(
                     msgs, model=model, system_prompt=system_prompt, tools=tool_schemas
                 ):
                     if isinstance(chunk, ChatMessage):
@@ -346,7 +357,7 @@ class ChatService:
             else:
                 yield ("error", f"provider error: {exc}")
 
-        served_model = provider.name
+        served_model = self._providers.last_fallback_provider or provider.name
         if using_orchestrator:
             orch = self._get_orchestrator()
             ls = orch.last_served()

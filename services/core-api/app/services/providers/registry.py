@@ -8,6 +8,7 @@ whenever the selected provider has no API key configured, so chat always works.
 from __future__ import annotations
 
 import time
+from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
@@ -32,6 +33,10 @@ from app.services.settings_service import ACTIVE_PROVIDER_KEY, SettingsService
 logger = get_logger(__name__)
 
 MOCK = "mock"
+
+# Exponential backoff (seconds) between 429/retryable attempts before falling
+# back to the next provider in the pool.
+_RETRY_DELAYS = [1, 2, 4]
 
 
 @dataclass
@@ -185,6 +190,127 @@ class ProviderRegistry:
                 cached[name] = reachable
 
         return cached
+
+    # --- resilience: 429-aware fallback chain ---
+    def _fallback_order(self, *, exclude: str | None = None) -> list[ModelProvider]:
+        """Ordered providers for fallback.
+
+        Prefers real providers that are ``available()`` (key configured), in
+        registration order, then appends the always-available mock provider last.
+        ``exclude`` skips a provider already tried as the primary.
+        """
+        order: list[ModelProvider] = []
+        for name, p in self._providers.items():
+            if name == MOCK:
+                continue
+            if exclude is not None and name == exclude:
+                continue
+            if p.available():
+                order.append(p)
+        mock = self._providers.get(MOCK)
+        if mock is not None:
+            order.append(mock)
+        return order
+
+    @property
+    def last_fallback_provider(self) -> str | None:
+        """Name of the provider that actually served the last fallback chat."""
+        return getattr(self, "_last_fallback", None)
+
+    async def chat_with_fallback(
+        self,
+        messages: Iterable,
+        *,
+        model: str | None = None,
+        system_prompt: str | None = None,
+        tools: list[dict] | None = None,
+        max_retries: int = 3,
+    ) -> str | object:
+        """429-aware chat with silent provider fallback, mock as last resort.
+
+        Tries the active provider (with retry/backoff). On persistent failure or
+        a non-retryable error it silently moves to the next available provider in
+        the pool, and finally the mock provider — the user is never left without
+        a reply.
+        """
+        primary = self.get()
+        chain = [primary] + self._fallback_order(exclude=primary.name)
+        for provider in chain:
+            try:
+                logger.info("chat attempt via provider %s", provider.name)
+                result = await provider.chat_with_retry(
+                    messages,
+                    model=model,
+                    system_prompt=system_prompt,
+                    tools=tools,
+                    max_retries=max_retries,
+                )
+                self._last_fallback = provider.name
+                return result
+            except Exception as exc:  # noqa: BLE001 - try the next provider
+                logger.warning(
+                    "Provider %s failed, falling back to next: %s",
+                    provider.name,
+                    exc,
+                )
+                continue
+        # Mock is always last in the chain and never raises; this is a safety net.
+        mock = self._providers.get(MOCK)
+        if mock is None:
+            raise RuntimeError("No provider (including mock) available for chat")
+        logger.error("All providers failed; using mock as final fallback")
+        self._last_fallback = MOCK
+        return await mock.chat(
+            messages, model=model, system_prompt=system_prompt, tools=tools
+        )
+
+    async def stream_with_fallback(
+        self,
+        messages: Iterable,
+        *,
+        model: str | None = None,
+        system_prompt: str | None = None,
+        tools: list[dict] | None = None,
+        max_retries: int = 3,
+    ) -> AsyncIterator:
+        """Streaming variant of :meth:`chat_with_fallback`.
+
+        Walks the same provider chain, yielding tokens from the first provider
+        that streams successfully. The mock provider is the guaranteed last
+        resort.
+        """
+        primary = self.get()
+        chain = [primary] + self._fallback_order(exclude=primary.name)
+        last_exc: Exception | None = None
+        for provider in chain:
+            try:
+                async for chunk in provider.stream_with_retry(
+                    messages,
+                    model=model,
+                    system_prompt=system_prompt,
+                    tools=tools,
+                    max_retries=max_retries,
+                ):
+                    yield chunk
+                self._last_fallback = provider.name
+                return
+            except Exception as exc:  # noqa: BLE001 - try the next provider
+                last_exc = exc
+                logger.warning(
+                    "Provider %s stream failed, falling back to next: %s",
+                    provider.name,
+                    exc,
+                )
+                continue
+        mock = self._providers.get(MOCK)
+        if mock is None:
+            raise RuntimeError("No provider (including mock) available for stream")
+        logger.error("All providers failed; using mock stream as final fallback")
+        self._last_fallback = MOCK
+        async for chunk in mock.stream(
+            messages, model=model, system_prompt=system_prompt, tools=tools
+        ):
+            yield chunk
 
 
 # Process-wide registry: mock (always available) + real providers (gated on keys).

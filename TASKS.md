@@ -55,28 +55,31 @@ forward.**
   - [x] Optional vector index (no mandatory vector DB)
   - [x] `recall()` wired into the chat orchestration loop
 - [ ] **Remote transport** — real device pairing + relay (`services/core-api/app/services/remote/`, `ws/remote.py`)
-  - [ ] Pairing secrets / auth tokens on `devices` (extend `models/device.py`)
-  - [ ] Live presence over `/ws/remote`; dashboard reaches paired devices
+  - [x] Pairing secrets / auth tokens on `devices` (extend `models/device.py`)
+  - [x] Live presence over `/ws/remote`; dashboard reaches paired devices
 - [x] **File ingestion** — text extraction (text/code/PDF) on upload (`services/core-api/app/services/files/`)
   - [x] `POST /api/files` extracts text (413 over `MAX_UPLOAD_BYTES`); `GET /api/files/{id}` returns `extracted_text`
   - [x] Chunk → index pipeline; searchable content feeding memory/research
   - [x] `GET /api/files/search` (`?q=&k=`) — semantic or substring over `file_chunks`
-- [ ] **Persona depth** — mode-specific tuned prompts + memory-aware tone (`packages/prompts/`)
+- [x] **Persona depth** — mode-specific tuned prompts + memory-aware tone + self-evolving persona (every 10 turns / 24h) (`packages/prompts/`, `services/core-api/app/services/persona/`)
 - [x] **Status bus** — real event fan-out (provider health, task due, research, tool_approval, presence-orb state) over `/ws/status`
 - [x] **Presence orb** reactive to real chat/voice/agent state (driven by `/ws/status` events)
 - [x] **Projects & Research** — real workspaces (`/api/projects` CRUD linking sessions/tasks/files; `/api/research` background agent persisting findings + a `kind="research"` memory row)
 - [x] **Auth (single-user)** — `miori-local` user created on first boot, `default_user_id` in settings; `MIORI_API_TOKEN` still enforced when set
 - [x] **Tools / agent approval** — `requires_approval` tools pause the ReAct loop and broadcast `tool_approval` over `/ws/status`; `POST /api/tools/approve|reject`; `agent_mode` setting gates the loop
 - [x] **Provider reachability** — `GET /api/providers/status` (with `reachable`) + `GET /api/providers/ping` (cached ~60s TTL)
-- [x] **Frontends wired to the backend** — desktop + remote talk to `core-api` over REST + WS (mock fallback when offline)
+- [x] **Frontends wired to the backend** — desktop + remote talk to `core-api` over REST + WS; plans viewer, computer-use settings, mock data removed, honest empty states, degraded connection handling
 - [x] **Setup docs + dev scripts** — `docs/setup/INSTALLATION.md`, `scripts/env-validate.{sh,ps1}`, `scripts/db-init.{sh,ps1}`
 
 ---
 
 ## v0.3 — Advanced automation
 
-- [x] **Computer-use** — sandboxed actions (screenshot/click/type/shell), safety gating, opt-in only (`services/core-api/app/services/tools/`, `ws/remote.py`)
-  - [ ] Computer-use **frame streaming** over `/ws/remote` (P2, still not fully wired)
+- [x] **Computer-use** — full agentic tools (shell, filesystem, browser, system), planner/executor, trust levels, audit/undo logs, continuous vision, audio context (`services/core-api/app/services/tools/`, `services/core-api/app/services/planner/`, `services/core-api/app/services/vision/`, `services/core-api/app/services/audio/`)
+  - [x] Computer-use **frame streaming** over `/ws/remote`
+  - [x] **429-aware provider retry** — exponential backoff (1s, 2s, 4s), silent cross-provider fallback, mock as last resort, applies to both REST and WS paths (`services/core-api/app/services/providers/base.py`, `registry.py`)
+  - [x] **Continuous vision** — moondream primary backend with pytesseract OCR fallback and cloud LLM escalation
+  - [x] **Audio context** — rolling mic buffer, keyword wake, notification forwarding
 - [x] **Voice pipeline** — STT/TTS, push-to-talk, amplitude-reactive orb (`services/providers/` voice, `apps/desktop/src/features/chat/`)
 - [x] **Multi-agent orchestration** — agent loop + sub-agent delegation over the tool registry
 - [x] **Task scheduler** — APScheduler recurring/cron jobs; add `cron`/`next_run` to `models/task.py`
@@ -100,41 +103,60 @@ forward.**
 
 ---
 
-## Mocked vs implemented (as of v1.1.0)
+## Mocked vs implemented (as of v1.2.0)
 
 ### Real / implemented
 - [x] Monorepo + desktop shell + remote dashboard shell, both wired to the backend
 - [x] FastAPI app, REST + WS routes registered
-- [x] SQLite + all 8 tables, CRUD **persistence** (sessions, messages, memories, files, tasks, settings, devices)
+- [x] SQLite + all tables, CRUD **persistence** (sessions, messages, memories, files, tasks, settings, devices, plans, plan_steps)
 - [x] `GET /api/health`
 - [x] Service-layer interfaces + lite default implementations
 - [x] `LITE_MODE` / `REMOTE_ENABLED` config
-- [x] **Real model providers** — OpenAI / OpenAI-compatible (OpenRouter, local) + Gemini, lazy-imported, with mock fallback
+- [x] **Real model providers** — 10 providers (OpenAI, Gemini, Groq, Mistral, SambaNova, OpenRouter, HuggingFace, Cohere, Cloudflare, Mock), lazy-imported, with 429-aware retry + cross-provider fallback
 - [x] **Active-provider selection** persisted in the DB + `PUT /api/providers/active`
 - [x] Real token streaming over `/ws/chat`
 - [x] **File text ingestion** (text/code/PDF) on upload
-- [x] Memory **pinning + filtering + conversation summaries**
+- [x] Memory **pinning + filtering + conversation summaries + persona evolution**
 - [x] Setup docs (`docs/setup/INSTALLATION.md`) + dev scripts (`env-validate`, `db-init`)
 - [x] **Semantic memory** (ChromaDB + SentenceTransformers) + chat recall integration
 - [x] **File indexing** (chunking + ingestion pipeline) + `GET /api/files/search`
 - [x] **Task scheduler** (APScheduler + background tasks)
-- [x] **Computer-use tools** (PyAutoGUI + sandbox + audit log)
+- [x] **Computer-use tools** (unrestricted shell, filesystem, browser, system tools; trust levels; audit/undo logs)
 - [x] **Agent tool-calling loop** (LLM invokes tools iteratively)
+- [x] **Execution plans** (PlannerService + ExecutorService with parallel batches, replan, double-verify)
+- [x] **Continuous vision** (moondream + pytesseract OCR fallback)
+- [x] **Audio context** (rolling mic buffer, keyword wake, notification forwarding)
 - [x] **Tools / agent approval** (`tool_approval` pause + broadcast, `POST /api/tools/approve|reject`, `agent_mode` gate)
+- [x] **Plan approval** (`step_approval_needed` broadcast, `POST /api/plans/{id}/steps/{step_id}/approve`)
 - [x] **Voice** (OpenAI Whisper STT + TTS, mock fallback; desktop push-to-talk)
 - [x] **Projects** (`/api/projects` CRUD, linked sessions/tasks/files; `project_id` FK)
 - [x] **Research** (background agent, persisted `research` row + `kind="research"` memory)
-- [x] **WebSocket status bus** (real fan-out: task due, research, tool_approval, provider reachability, presence-orb)
+- [x] **WebSocket status bus** (real fan-out: plan/task/research/tool_approval/step_approval/provider reachability/presence-orb)
 - [x] **Presence orb** reactive to `/ws/status` state
 - [x] **Auth (single-user)** (`miori-local` user on first boot, `default_user_id` in settings)
 - [x] **Provider reachability** (`/api/providers/status` `reachable` + cached `/api/providers/ping`)
 
 ### Still mocked / lite (intentionally, per constraints)
 - [ ] Remote = **LAN-only / mock device presence**, no real WAN pairing/transport, no pairing secrets
-- [ ] Computer-use **frame streaming** over `/ws/remote` (P2, not fully wired)
-- [ ] Persona = **static friend-first prompt** (no mode tuning)
 - [ ] Multi-user = **single `miori-local` identity** only
 
 ### Deferred (interface/TODO only)
 - [ ] multi-user accounts
 - [ ] packaging → v0.3
+
+---
+
+## v1.2 — Full Computer Control
+
+- [x] Trust levels + settings API (`manual`, `auto-shell`, `trusted`, `god`)
+- [x] Plan/step models + CRUD + WS lifecycle events
+- [x] PlannerService (LLM decomposition, parallel sub-plans, double-verification)
+- [x] ExecutorService (parallel batches, replan, LLM-retry, timeout, approval)
+- [x] Unrestricted agentic tools (shell, fs, browser, system)
+- [x] Hardened `computer_use.py` (no mock fallback, pyautogui hard dep, list-of-args shell)
+- [x] Continuous vision engine (moondream + pytesseract fallback)
+- [x] Audio engine (rolling buffer, keyword wake, notification forwarding)
+- [x] Provider 429 retry wrapper + cross-provider fallback
+- [x] PersonaEvolutionService (every 10 turns / 24h, `persona:evolution` memory block)
+- [x] Frontend: Plans viewer + ComputerUseSettings + mock data removed
+- [x] Tests: plan CRUD, auth, WS broadcasts

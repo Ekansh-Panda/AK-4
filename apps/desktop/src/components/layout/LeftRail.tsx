@@ -6,6 +6,7 @@ import {
   FolderKanban,
   Telescope,
   ListChecks,
+  ListTree,
   MonitorSmartphone,
   Settings,
 } from "lucide-react";
@@ -20,6 +21,7 @@ const nav = [
   { to: "/projects", label: "Projects", Icon: FolderKanban },
   { to: "/research", label: "Research", Icon: Telescope },
   { to: "/tasks", label: "Tasks", Icon: ListChecks },
+  { to: "/plans", label: "Plans", Icon: ListTree },
   { to: "/remote", label: "Remote", Icon: MonitorSmartphone },
   { to: "/settings", label: "Settings", Icon: Settings },
 ];

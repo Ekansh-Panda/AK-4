@@ -4,7 +4,6 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
-import { mockTasks } from "@/lib/mockData";
 import { cn } from "@/lib/cn";
 import type { ApiTask } from "@/lib/types";
 
@@ -24,19 +23,8 @@ export function TasksView() {
     if (r.ok) {
       setTasks(r.data);
     } else {
-      // Read-only fallback derived from the mock tasks.
-      setTasks(
-        mockTasks.map((t) => ({
-          id: t.id,
-          created_at: new Date(t.createdAt).toISOString(),
-          updated_at: new Date(t.createdAt).toISOString(),
-          user_id: null,
-          title: t.title,
-          description: null,
-          status: t.done ? "done" : "pending",
-          due_at: null,
-        })),
-      );
+      // Backend unreachable — show an honest empty state (no mock data).
+      setTasks([]);
     }
   }, []);
 
@@ -90,7 +78,7 @@ export function TasksView() {
 
       {offline && (
         <p className="mb-4 text-xs text-ink-faint">
-          Backend unreachable — showing a local fallback (changes won't persist).
+          Backend unreachable — connect the server to load and manage tasks.
         </p>
       )}
 

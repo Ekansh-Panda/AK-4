@@ -18,6 +18,7 @@ dependencies = [
     "httpx==0.28.1",
     "litellm==1.83.7",
     "pypdf==5.1.0",
+    "moondream>=0.1.0",
 ]
 
 [project.optional-dependencies]
@@ -31,6 +32,8 @@ full = [
     "sentence-transformers>=2.7",
     "numpy>=1.26",
     "APScheduler==3.10.4",
+    "pytesseract>=0.3.10",
+    "mss>=9.0.1",
 ]
 
 [tool.pytest.ini_options]

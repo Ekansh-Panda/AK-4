@@ -17,25 +17,25 @@ Miori Core is a **clean modular monorepo**, not a merge of donor repos.
 |---|---|---|---|
 | **Desktop app** | `apps/desktop/` | Tauri + React + TS + Tailwind + shadcn/ui | Primary native companion. Tabbed workspace (Chat, Files, Memory, Projects, Research, Tasks, Remote, Settings) + presence orb. |
 | **Remote dashboard** | `apps/remote-dashboard/` | React + TS + Tailwind (web) | Lightweight browser surface to reach Miori + paired devices from anywhere. Friend-first, not an ops console. |
-| **Core API** | `services/core-api/` | Python FastAPI + SQLAlchemy + SQLite | The brain. REST `/api` + WebSocket `/ws`. Owns all services (memory/providers/tools/persona/remote/tasks/files) and persistence. |
+| **Core API** | `services/core-api/` | Python FastAPI + SQLAlchemy + SQLite | The brain. REST `/api` + WebSocket `/ws`. Owns all services (memory/providers/tools/persona/planner/executor/vision/audio/remote/tasks/files) and persistence. |
 | **Shared packages** | `packages/` | TS (`ui`, `types`), prompt assets (`prompts`) | Design system, shared types, persona prompt profiles consumed by both frontends and the API. |
 
 ```
-                          ┌────────────────────────────────────────┐
-                          │            services/core-api            │
-                          │  FastAPI  ── REST /api  ── WS /ws        │
-                          │                                         │
-   apps/desktop  ───────▶ │  routers/ ─▶ services/ ─▶ db (SQLite)   │
-   (Tauri shell)          │   chat       memory    models/          │
-                          │   memory     providers                  │
-   apps/remote-dashboard ▶│   files      persona                    │
-   (browser)              │   providers  tools                      │
-                          │   persona    remote                     │
-        ▲   ▲             │   remote     tasks                      │
-        │   │             │   tasks      files                      │
-   packages/ui            │   settings                              │
-   packages/prompts       └────────────────────────────────────────┘
-   packages/types
+                           ┌────────────────────────────────────────┐
+                           │            services/core-api            │
+                           │  FastAPI  ── REST /api  ── WS /ws        │
+                           │                                         │
+    apps/desktop  ───────▶ │  routers/ ─▶ services/ ─▶ db (SQLite)   │
+    (Tauri shell)          │   chat       memory    models/          │
+                           │   memory     providers                  │
+    apps/remote-dashboard ▶│   files      persona                    │
+    (browser)              │   providers  tools                      │
+                           │   persona    planner                    │
+         ▲   ▲             │   remote     executor                   │
+         │   │             │   tasks      vision                     │
+    packages/ui            │   settings   audio                      │
+    packages/prompts       └────────────────────────────────────────┘
+    packages/types
 ```
 
 - **Frontends are thin.** All intelligence (persona, memory, provider routing, tools) lives in `core-api`. The Tauri shell and the dashboard share the same API contract, so the dashboard is "the desktop app, remotely."

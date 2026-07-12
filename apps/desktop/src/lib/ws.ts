@@ -1,12 +1,10 @@
-import { mockReply } from "./mockData";
-
 /**
  * Chat websocket helper.
  *
- * When a real backend exists it connects to `ws://localhost:8000/ws/chat`
- * (services/core-api/app/ws/chat.py) and streams token frames. When it's
- * unreachable it falls back to a local mock that "types" a canned reply
- * chunk-by-chunk, so the streaming UX is fully exercised with no server.
+ * Connects to `ws://localhost:8000/ws/chat`
+ * (services/core-api/app/ws/chat.py) and streams token frames. When the socket
+ * is unreachable the stream reports an error (via `onError`) and finalizes —
+ * there is no mock reply, so the UI shows an honest "not connected" state.
  *
  * Frame protocol (server -> client):
  *   {"type":"session","session_id":"..."}
@@ -75,7 +73,7 @@ export function streamChat(
         } catch {
           /* noop */
         }
-        runMock(prompt, handlers, () => cancelled);
+        reportDisconnected(handlers, () => cancelled);
       }
     }, 1500);
 
@@ -123,7 +121,7 @@ export function streamChat(
     ws.onerror = () => {
       clearTimeout(fallbackTimer);
       if (!opened && !cancelled) {
-        runMock(prompt, handlers, () => cancelled);
+        reportDisconnected(handlers, () => cancelled);
       }
     };
     ws.onclose = () => {
@@ -149,8 +147,8 @@ export function streamChat(
     };
   }
 
-  // No socket at all — pure mock path.
-  runMock(prompt, handlers, () => cancelled);
+  // No socket at all — report a disconnected state (no mock reply).
+  reportDisconnected(handlers, () => cancelled);
   return {
     cancel: () => {
       cancelled = true;
@@ -158,26 +156,14 @@ export function streamChat(
   };
 }
 
-/** Locally "type out" the mock reply chunk-by-chunk. */
-function runMock(
-  _prompt: string,
+/** Report that the backend is unreachable, then finalize the stream cleanly. */
+function reportDisconnected(
   handlers: ChatStreamHandlers,
   isCancelled: () => boolean,
 ): void {
-  const words = mockReply.split(" ");
-  let i = 0;
-  const tick = () => {
-    if (isCancelled()) return;
-    if (i >= words.length) {
-      handlers.onDone(undefined);
-      return;
-    }
-    handlers.onChunk((i === 0 ? "" : " ") + words[i]);
-    i += 1;
-    setTimeout(tick, 45 + Math.random() * 55);
-  };
-  // Small "thinking" delay before the first token.
-  setTimeout(tick, 320);
+  if (isCancelled()) return;
+  handlers.onError?.(new Error("Not connected to the Miori backend."));
+  handlers.onDone(undefined);
 }
 
 export const wsUrl = WS_URL;
